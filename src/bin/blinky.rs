@@ -21,11 +21,11 @@ async fn main(_spawner: Spawner) {
         led2.set_high();
         led3.set_high();
         led4.set_high();
-        Timer::after_millis(1000).await;
+        Timer::after_millis(100).await;
         led1.set_low();
         led2.set_low();
         led3.set_low();
         led4.set_low();
-        Timer::after_millis(1000).await;
+        Timer::after_millis(100).await;
     }
 }
