@@ -658,6 +658,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nrf54l15-app-pac"
+version = "0.1.0"
+source = "git+https://github.com/WilliamTakeshi/nrf54l15-app-pac#c37ad1d0ba99be80a163c7c1a11df9fbaa689242"
+dependencies = [
+ "cortex-m",
+ "critical-section",
+ "vcell",
+]
+
+[[package]]
 name = "nrf54l15-crypto"
 version = "0.1.0"
 dependencies = [
@@ -669,6 +679,7 @@ dependencies = [
  "embassy-executor",
  "embassy-nrf",
  "embassy-time",
+ "nrf54l15-app-pac",
  "panic-probe",
  "rand",
 ]
