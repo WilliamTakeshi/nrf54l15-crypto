@@ -1,12 +1,6 @@
 #![no_std]
 #![no_main]
 
-#[unsafe(link_section = ".vector_table.interrupts")]
-#[unsafe(no_mangle)]
-pub static __INTERRUPTS: [unsafe extern "C" fn(); 240] = [default_handler; 240];
-
-unsafe extern "C" fn default_handler() {}
-
 use cortex_m_rt::entry;
 use defmt::info;
 use defmt_rtt as _;
@@ -18,10 +12,16 @@ fn main() -> ! {
     info!("Starting nRF54L15 blinky example...");
     let p = pac::Peripherals::take().unwrap();
     p.global_p2_s.pin_cnf(9).write(|w| w.dir().output());
+    p.global_p1_s.pin_cnf(10).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(7).write(|w| w.dir().output());
+    p.global_p1_s.pin_cnf(14).write(|w| w.dir().output());
 
     loop {
         // Turn LED on
         p.global_p2_s.outset().write(|w| w.pin9().bit(true));
+        p.global_p1_s.outset().write(|w| w.pin10().bit(true));
+        p.global_p2_s.outset().write(|w| w.pin7().bit(true));
+        p.global_p1_s.outset().write(|w| w.pin14().bit(true));
 
         for _ in 0..100_000 {
             cortex_m::asm::nop();
@@ -29,6 +29,9 @@ fn main() -> ! {
 
         // Turn LED off
         p.global_p2_s.outclr().write(|w| w.pin9().bit(true));
+        p.global_p1_s.outclr().write(|w| w.pin10().bit(true));
+        p.global_p2_s.outclr().write(|w| w.pin7().bit(true));
+        p.global_p1_s.outclr().write(|w| w.pin14().bit(true));
 
         for _ in 0..100_000 {
             cortex_m::asm::nop();
