@@ -4,13 +4,13 @@
 use cortex_m_rt::entry;
 use defmt::info;
 use defmt_rtt as _;
-use nrf54l15_app_pac as pac;
+use nrf54l15_app_pac;
 use panic_probe as _;
 
 #[entry]
 fn main() -> ! {
     info!("Starting nRF54L15 blinky example...");
-    let p = pac::Peripherals::take().unwrap();
+    let p = nrf54l15_app_pac::Peripherals::take().unwrap();
     p.global_p2_s.pin_cnf(9).write(|w| w.dir().output());
     p.global_p1_s.pin_cnf(10).write(|w| w.dir().output());
     p.global_p2_s.pin_cnf(7).write(|w| w.dir().output());

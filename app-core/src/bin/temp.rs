@@ -14,6 +14,8 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
+    info!("Starting temperature module...");
+
     let p = embassy_nrf::init(Default::default());
     let mut temp = Temp::new(p.TEMP, Irqs);
 

@@ -15,5 +15,6 @@ Minimal Rust + nRF54L15 example project.
    ```
 3. **Connect the nRF54L15 and run the example**
     ```bash
+    cd app-core
     cargo run --bin blink
     ```

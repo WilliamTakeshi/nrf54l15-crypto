@@ -4,6 +4,7 @@ runner = "probe-rs run --chip nRF54L15"
 [build]
 # target = "thumbv8m.main-none-eabi"
 target = "thumbv8m.main-none-eabihf"
+# target = "riscv32emc-unknown-none-elf"
 
 [env]
 DEFMT_LOG = "trace"
