@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+defmt = "1.0.1"
+defmt-rtt = "1.0.0"
+embedded-hal = "1.0.0"
+panic-halt = "0.2.0"
+riscv = { version = "0.15.0", features = ["critical-section-single-hart"] }
+riscv-rt = { version = "0.16.0", features = ["single-hart"] }
+
+# nrf54l15-flpr-pac = { git = "https://github.com/WilliamTakeshi/nrf54l15-flpr-pac", version = "0.1.0", features = ["critical-section", "rt"] }
+nrf54l15-flpr-pac = { path = "/home/william/projects/rust/nrf54l15-flpr-pac", version = "0.1.0", features = ["rt", "critical-section"] }
