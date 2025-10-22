@@ -23,7 +23,7 @@ fn main() -> ! {
         p.global_p2_s.outset().write(|w| w.pin7().bit(true));
         p.global_p1_s.outset().write(|w| w.pin14().bit(true));
 
-        for _ in 0..1_000_000 {
+        for _ in 0..100_000 {
             cortex_m::asm::nop();
         }
 
@@ -33,7 +33,7 @@ fn main() -> ! {
         p.global_p2_s.outclr().write(|w| w.pin7().bit(true));
         p.global_p1_s.outclr().write(|w| w.pin14().bit(true));
 
-        for _ in 0..1_000_000 {
+        for _ in 0..100_000 {
             cortex_m::asm::nop();
         }
     }

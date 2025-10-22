@@ -438,8 +438,6 @@ dependencies = [
 name = "flpr-core"
 version = "0.1.0"
 dependencies = [
- "defmt",
- "defmt-rtt",
  "embedded-hal 1.0.0",
  "nrf54l15-flpr-pac",
  "panic-halt",

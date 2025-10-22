@@ -1,6 +1,3 @@
-[target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "probe-rs run --chip nRF54L15"
-
 [build]
 target = "riscv32emc-unknown-none-elf"
 
