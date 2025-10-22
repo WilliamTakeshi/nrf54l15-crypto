@@ -7,7 +7,7 @@ use defmt_rtt as _;
 use nrf54l15_app_pac;
 use panic_probe as _;
 
-static mut HASH_RESULT: [u8; 32] = [0; 32];
+const BUF_SIZE: usize = 128;
 
 #[entry]
 fn main() -> ! {
@@ -17,91 +17,90 @@ fn main() -> ! {
 
     // Enable CryptoMaster
     p.global_cracen_s.enable().write(|w| {
-        w.cryptomaster()
-            .set_bit()
-            .rng()
-            .set_bit()
-            .pkeikg()
-            .set_bit()
+        w.cryptomaster().set_bit();
+        w.rng().set_bit();
+        w.pkeikg().set_bit()
     });
 
     // Example input
-    let data: [u8; 64] = [0xFF; 64];
+    let src_buf: [u8; BUF_SIZE] = [0xFF; BUF_SIZE];
+    let src_ptr = src_buf.as_ptr();
 
-    info!("data len {}", data.len() as u32);
+    // 2. Empty destination buffer for final push
+    let mut dst_buf: [u8; BUF_SIZE] = [0x00; BUF_SIZE];
+    let dst_ptr = dst_buf.as_mut_ptr();
 
-    unsafe {
-        let out_ptr = &raw mut HASH_RESULT as u32;
-        let out_len = core::mem::size_of::<[u8; 32]>() as u32;
+    let dma = p.global_cracencore_s.cryptmstrdma();
+    let pk = p.global_cracencore_s.pk();
 
-        // 1. Configure DMA fetch (input)
-        p.global_cracencore_s
-            .cryptmstrdma()
-            .fetchaddrlsb()
-            .write(|w| w.bits(data.as_ptr() as u32));
-        p.global_cracencore_s
-            .cryptmstrdma()
-            .fetchaddrmsb()
-            .write(|w| w.bits(0));
-        p.global_cracencore_s
-            .cryptmstrdma()
-            .fetchlen()
-            .write(|w| w.bits(data.len() as u32));
+    // 3. Configure DMA
+    dma.config().write(|w| {
+        w.fetchctrlindirect().clear_bit();
+        w.pushctrlindirect().clear_bit();
+        w.fetchstop().clear_bit();
+        w.pushstop().clear_bit();
+        w.softrst().clear_bit()
+    });
 
-        // 2. Configure DMA push (output)
-        p.global_cracencore_s
-            .cryptmstrdma()
-            .pushaddrlsb()
-            .write(|w| w.bits(out_ptr));
-        p.global_cracencore_s
-            .cryptmstrdma()
-            .pushaddrmsb()
-            .write(|w| w.bits(0));
-        p.global_cracencore_s
-            .cryptmstrdma()
-            .pushlen()
-            .write(|w| w.bits(out_len));
+    // 1. Configure DMA fetch (input)
+    dma.fetchaddrlsb()
+        .write(|w| unsafe { w.bits(src_ptr as u32) });
+    dma.fetchlen()
+        .write(|w| unsafe { w.bits(src_buf.len() as u32) });
 
-        // 3. Configure CryptoMaster for SHA-256
-        p.global_cracencore_s
-            .cryptmstrdma()
-            .config()
-            .write(|w| w.bits(0b00000)); // placeholder for SHA-256
+    // 1.1. Start and wait for fetch
+    dma.start().write(|w| w.startfetch().set_bit());
+    while dma.status().read().fetchbusy().bit_is_set() {}
 
-        info!("after configure");
-        // 4. Start
-        p.global_cracencore_s
-            .cryptmstrdma()
-            .start()
-            .write(|w| w.bits(0b11));
-
-        for _ in 0..200_000 {
-            cortex_m::asm::nop();
+    pk.pointers().write(|w| {
+        unsafe {
+            w.opptra().bits(0x1);
+            w.opptrb().bits(0x1);
+            w.opptrc().bits(0x1);
+            w.opptrn().bits(0x1);
         }
+        w
+    });
 
-        info!(
-            "p.global_cracencore_s.cryptmstrdma().status().read().bits(): {:b}",
-            p.global_cracencore_s.cryptmstrdma().status().read().bits()
-        );
+    pk.command().write(|w| {
+        unsafe {
+            // 7-bit OPEADDR
+            w.opeaddr().bits(0x01)
+        }
+    });
 
-        let status = p.global_cracencore_s.cryptmstrdma().status().read().bits() & 0x1;
+    pk.control().write(|w| w.start().set_bit());
 
-        info!("status: {:b}", status);
-
-        // 5. Wait complete
-        while p.global_cracencore_s.cryptmstrdma().status().read().bits() & 0x1 != 0 {}
-
-        let status = p.global_cracencore_s.cryptmstrdma().status().read().bits();
-
-        info!("data: {:x}", data);
-        info!("data: {:x}", data.as_ptr() as u32);
-
-        info!("status: {:b}", status);
-
-        // 6. Read result via raw pointer
-        let hash: [u8; 32] = core::ptr::read_volatile(core::ptr::addr_of!(HASH_RESULT));
-        info!("result: {:x}", hash);
+    let err = pk.status().read().errorflags().bits();
+    if err != 0 {
+        let failptr = pk.status().read().failptr().bits() as u8;
+        info!("err1: {:b}", err);
+        info!("err1: {:x}", err);
+        info!("failptr1: {:b}", failptr);
     }
+    while pk.status().read().pkbusy().bit_is_set() {}
+
+    if err != 0 {
+        let failptr = pk.status().read().failptr().bits() as u8;
+        info!("err: {:b}", err);
+        info!("err: {:x}", err);
+        info!("failptr: {:b}", failptr);
+    }
+
+    // 2. Configure DMA push (output)
+    dma.pushaddrlsb()
+        .write(|w| unsafe { w.bits(dst_ptr as u32) });
+    dma.pushlen()
+        .write(|w| unsafe { w.bits(dst_buf.len() as u32) });
+
+    // 2.2. Start and wait for fetch
+    dma.start().write(|w| w.startpush().set_bit());
+    while dma.status().read().pushbusy().bit_is_set() {}
+
+    // info!("dma.status().read(): {:x}", dma.status().read().bits());
+
+    info!("src_buf: {:02x}", src_buf);
+    info!("dst_buf: {:02x}", dst_buf);
 
     loop {
         cortex_m::asm::nop();

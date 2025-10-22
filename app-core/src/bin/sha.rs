@@ -43,9 +43,7 @@ fn main() -> ! {
     info!("\nHash computation complete!");
 
     loop {
-        for _ in 0..1_000_000 {
-            cortex_m::asm::nop();
-        }
+        cortex_m::asm::nop();
     }
 }
 
