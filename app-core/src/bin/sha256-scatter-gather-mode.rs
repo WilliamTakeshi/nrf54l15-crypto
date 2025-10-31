@@ -30,7 +30,7 @@ fn main() -> ! {
     };
 
     // Create the actual string in memory
-    static mut EXAMPLE_STR: [u8; 15] = *b"Example string\0";
+    static mut EXAMPLE_STR: [u8; 17] = *b"Example string123";
     let mut bytes_0806: [u8; 4] = [0x08, 0x06, 0x00, 0x00];
     let addr_0806 = bytes_0806.as_mut_ptr();
 
@@ -38,8 +38,12 @@ fn main() -> ! {
     let mut input_mid = SxDesc {
         addr: core::ptr::addr_of_mut!(EXAMPLE_STR) as *mut u8, // "Example string"
         next: last_descriptor,
-        sz: 536870928, // 0x20000010 // 16
-        dmatag: 547,
+        // sz: 536870928, // 0x20000010 == 16
+        sz: 536870932, // 0x20000014 == 20 (after EXAMPLE_STR sz 17)
+        // dmatag: 547, // *b"Example string\0";
+        // dmatag: 291, //*b"Example string1\0";
+        // dmatag: 35, //*b"Example string12";
+        dmatag: 803, //*b"Example string123";
     };
 
     // Outer descriptor (m)
