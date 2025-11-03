@@ -4,7 +4,6 @@
 use cortex_m_rt::entry;
 use defmt::info;
 use defmt_rtt as _;
-use nrf54l15_app_pac;
 use panic_probe as _;
 
 // Supported hash algorithm bitmasks
@@ -25,7 +24,8 @@ fn main() -> ! {
     info!("Starting nRF54L15 CryptoMaster SHA-256 example...");
     const OUTPUT_BUF_LEN: usize = 28;
     const HASH_ALGO: u8 = HashAlg::Sha2_224 as u8;
-    static mut INPUT: [u8; 14] = *b"Example string";
+    const INPUT_BUF_LEN: usize = 14;
+    static mut INPUT: [u8; INPUT_BUF_LEN] = *b"Example string";
 
     let p = nrf54l15_app_pac::Peripherals::take().unwrap();
 
@@ -35,12 +35,14 @@ fn main() -> ! {
     let mut bytes_hash: [u8; 4] = [HASH_ALGO, 0x06, 0x00, 0x00];
     let addr_hash = bytes_hash.as_mut_ptr();
 
-    // TODO: remove this unsafe by making EXAMPLE_STR not mut
-    let len = unsafe { (&(*(&raw const INPUT))).len() };
-    let dmatag = dmatag_for(len);
-    let sz = sz(len);
+    let dmatag = dmatag_for(INPUT_BUF_LEN);
+    let sz = sz(INPUT_BUF_LEN);
 
     // Last descriptor
+    #[allow(
+        clippy::manual_dangling_ptr,
+        reason = "nRF54L15 needs this pointer to be on address 1"
+    )]
     let last_descriptor: *mut SxDesc = 1 as *mut SxDesc;
 
     // Outer descriptor (output)

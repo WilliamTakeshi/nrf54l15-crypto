@@ -5,7 +5,6 @@
 use cortex_m_rt::entry;
 use defmt::info;
 use defmt_rtt as _;
-use nrf54l15_app_pac;
 use panic_probe as _;
 
 #[entry]
