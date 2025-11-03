@@ -32,10 +32,18 @@ fn main() -> ! {
     let mut output_buf: [u8; OUTPUT_BUF_LEN] = [0x00; OUTPUT_BUF_LEN];
     let output_buf_ptr = output_buf.as_mut_ptr();
 
+    let mut bytes_hash: [u8; 4] = [HASH_ALGO, 0x06, 0x00, 0x00];
+    let addr_hash = bytes_hash.as_mut_ptr();
+
+    // TODO: remove this unsafe by making EXAMPLE_STR not mut
+    let len = unsafe { (&(*(&raw const INPUT))).len() };
+    let dmatag = dmatag_for(len);
+    let sz = sz(len);
+
     // Last descriptor
     let last_descriptor: *mut SxDesc = 1 as *mut SxDesc;
 
-    // Outer descriptor (top-level m)
+    // Outer descriptor (output)
     let mut output_outer = SxDesc {
         addr: output_buf_ptr,
         next: last_descriptor,
@@ -43,38 +51,7 @@ fn main() -> ! {
         dmatag: 32,
     };
 
-    // Create the actual string in memory
-
-    let mut bytes_hash: [u8; 4] = [HASH_ALGO, 0x06, 0x00, 0x00];
-    let addr_hash = bytes_hash.as_mut_ptr();
-
-    fn dmatag_for(input: usize) -> u32 {
-        const TAG_BASE: u32 = 0x23;
-        const TAG_0: u32 = 0x000;
-        const TAG_1: u32 = 0x300;
-        const TAG_2: u32 = 0x200;
-        const TAG_3: u32 = 0x100;
-
-        match input % 4 {
-            0 => TAG_BASE | TAG_0, // -> 0x023 = 35
-            1 => TAG_BASE | TAG_1, // -> 0x323 = 803
-            2 => TAG_BASE | TAG_2, // -> 0x223 = 547
-            3 => TAG_BASE | TAG_3, // -> 0x123 = 291
-            _ => panic!("impossible state"),
-        }
-    }
-
-    fn sz(n: usize) -> u32 {
-        let group_end = ((n - 1) / 4 + 1) * 4;
-        (group_end | 0x2000_0000).try_into().unwrap()
-    }
-
-    // TODO: remove this unsafe by making EXAMPLE_STR not mut
-    let len = unsafe { (&(*(&raw const INPUT))).len() };
-    let dmatag = dmatag_for(len);
-    let sz = sz(len);
-
-    // Middle descriptor
+    // Middle descriptor (input)
     let mut input_mid = SxDesc {
         addr: core::ptr::addr_of_mut!(INPUT) as *mut u8, // "Example string"
         next: last_descriptor,
@@ -82,7 +59,7 @@ fn main() -> ! {
         dmatag,
     };
 
-    // Outer descriptor (m)
+    // Outer descriptor (input)
     let mut input_outer = SxDesc {
         addr: addr_hash,
         next: &mut input_mid as *mut SxDesc,
@@ -136,6 +113,27 @@ fn main() -> ! {
     loop {
         cortex_m::asm::nop();
     }
+}
+
+fn dmatag_for(input: usize) -> u32 {
+    const TAG_BASE: u32 = 0x23;
+    const TAG_0: u32 = 0x000;
+    const TAG_1: u32 = 0x300;
+    const TAG_2: u32 = 0x200;
+    const TAG_3: u32 = 0x100;
+
+    match input % 4 {
+        0 => TAG_BASE | TAG_0, // -> 0x023 = 35
+        1 => TAG_BASE | TAG_1, // -> 0x323 = 803
+        2 => TAG_BASE | TAG_2, // -> 0x223 = 547
+        3 => TAG_BASE | TAG_3, // -> 0x123 = 291
+        _ => panic!("impossible state"),
+    }
+}
+
+fn sz(n: usize) -> u32 {
+    let group_end = ((n - 1) / 4 + 1) * 4;
+    (group_end | 0x2000_0000).try_into().unwrap()
 }
 
 #[repr(C)]
