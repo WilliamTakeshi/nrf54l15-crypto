@@ -7,8 +7,6 @@ use defmt_rtt as _;
 use nrf54l15_app_pac;
 use panic_probe as _;
 
-// const BUF_SIZE: usize = 128;
-
 #[entry]
 fn main() -> ! {
     info!("Starting nRF54L15 CryptoMaster SHA-256 example...");
