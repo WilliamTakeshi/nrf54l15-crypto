@@ -2,7 +2,7 @@
 #![no_main]
 
 use cortex_m_rt::entry;
-use defmt::info;
+use defmt::{info, println};
 use defmt_rtt as _;
 use nrf54l15_app_pac;
 use panic_probe as _;
@@ -28,20 +28,38 @@ fn main() -> ! {
     };
 
     // Create the actual string in memory
-    static mut EXAMPLE_STR: [u8; 17] = *b"Example string123";
+
+    static mut EXAMPLE_STR: [u8; 18] = *b"Example string1234";
     let mut bytes_0806: [u8; 4] = [0x08, 0x06, 0x00, 0x00];
     let addr_0806 = bytes_0806.as_mut_ptr();
+
+    fn dmatag_for(input: usize) -> u32 {
+        match input % 4 {
+            0 => 35,
+            1 => 803,
+            2 => 547,
+            _ => 291,
+        }
+    }
+
+    fn sz(n: usize) -> u32 {
+        let group_end = ((n - 1) / 4 + 1) * 4;
+        (group_end | 0x2000_0000).try_into().unwrap()
+    }
+
+    // TODO: remove this unsafe by making EXAMPLE_STR not mut
+    let len = unsafe { (&(*(&raw const EXAMPLE_STR))).len() };
+    let dmatag = dmatag_for(len);
+    let sz = sz(len);
+
+    println!("dmatag: {}", dmatag);
 
     // Middle descriptor
     let mut input_mid = SxDesc {
         addr: core::ptr::addr_of_mut!(EXAMPLE_STR) as *mut u8, // "Example string"
         next: last_descriptor,
-        // sz: 536870928, // 0x20000010 == 16
-        sz: 536870932, // 0x20000014 == 20 (after EXAMPLE_STR sz 17)
-        // dmatag: 547, // *b"Example string\0";
-        // dmatag: 291, //*b"Example string1\0";
-        // dmatag: 35, //*b"Example string12";
-        dmatag: 803, //*b"Example string123";
+        sz,
+        dmatag,
     };
 
     // Outer descriptor (m)
