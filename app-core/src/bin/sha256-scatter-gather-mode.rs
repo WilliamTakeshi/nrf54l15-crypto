@@ -11,7 +11,7 @@ use panic_probe as _;
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 enum HashAlg {
-    // Sha1 = 0x02, // TODO: implement
+    Sha1 = 0x02,
     Sha2_224 = 0x04,
     Sha2_256 = 0x08,
     Sha2_384 = 0x10,
@@ -19,11 +19,21 @@ enum HashAlg {
     // Sm3 = 0x40,      // TODO: implement
 }
 
+const fn hash_output_len(algo: HashAlg) -> usize {
+    match algo {
+        HashAlg::Sha1 => 20,
+        HashAlg::Sha2_224 => 28,
+        HashAlg::Sha2_256 => 32,
+        HashAlg::Sha2_384 => 48,
+        HashAlg::Sha2_512 => 64,
+    }
+}
+
 #[entry]
 fn main() -> ! {
-    info!("Starting nRF54L15 CryptoMaster SHA-256 example...");
-    const OUTPUT_BUF_LEN: usize = 28;
-    const HASH_ALGO: u8 = HashAlg::Sha2_224 as u8;
+    info!("Starting nRF54L15 CryptoMaster SHA example...");
+    const HASH_ALGO: HashAlg = HashAlg::Sha1;
+    const OUTPUT_BUF_LEN: usize = hash_output_len(HASH_ALGO);
     const INPUT_BUF_LEN: usize = 14;
     static mut INPUT: [u8; INPUT_BUF_LEN] = *b"Example string";
 
@@ -32,7 +42,7 @@ fn main() -> ! {
     let mut output_buf: [u8; OUTPUT_BUF_LEN] = [0x00; OUTPUT_BUF_LEN];
     let output_buf_ptr = output_buf.as_mut_ptr();
 
-    let mut bytes_hash: [u8; 4] = [HASH_ALGO, 0x06, 0x00, 0x00];
+    let mut bytes_hash: [u8; 4] = [HASH_ALGO as u8, 0x06, 0x00, 0x00];
     let addr_hash = bytes_hash.as_mut_ptr();
 
     let dmatag = dmatag_for(INPUT_BUF_LEN);
@@ -107,10 +117,7 @@ fn main() -> ! {
     while dma.status().read().pushbusy().bit_is_set() {}
 
     // output
-    unsafe {
-        let bytes = core::slice::from_raw_parts(output_buf_ptr, output_buf.len());
-        info!("output bytes: {:02x}", bytes);
-    }
+    info!("output bytes: {:02x}", output_buf);
 
     loop {
         cortex_m::asm::nop();
