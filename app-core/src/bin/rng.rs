@@ -24,12 +24,15 @@ fn main() -> ! {
         // 3. Wait for data to be available in the FIFO
         while p.global_cracencore_s.rngcontrol().fifolevel().read().bits() == 0 {}
 
-        // 4. Read one 32-bit random word from FIFO
-        let random_word = p.global_cracencore_s.rngcontrol().fifo(0).read().bits();
-        info!("random_word: {:08x}", random_word);
+        // 4. Read random word from FIFO
+        for i in 0..16 {
+            let random_word = p.global_cracencore_s.rngcontrol().fifo(i).read().bits();
+            info!("random_word[{:02}]: {:08x}", i, random_word);
+        }
+        info!("-------------------------");
 
         // 5. Short delay between reads
-        for _ in 0..100_000 {
+        for _ in 0..1_000_000 {
             cortex_m::asm::nop();
         }
     }
