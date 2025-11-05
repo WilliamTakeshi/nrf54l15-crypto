@@ -14,26 +14,6 @@ fn main() -> ! {
     let kmu = p.global_kmu_s;
     let rramc = p.global_rramc_s;
 
-    // 2. Import Alice + Bob private keys
-    pub const _PRIV_ALICE: [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02];
-
-    pub const _PRIV_BOB: [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01];
-
-    let _attr = PsaKeyAttributes {
-        type_: 28946,
-        bits: 256,
-        lifetime: 0,
-        policy: PsaKeyPolicy {
-            usage: 16385,
-            alg: 151126016,
-            alg2: 0,
-        },
-        id: MbedtlsSvcKeyId {
-            key_id: 0,
-            owner: -1006632960,
-        },
-    };
-
     const SLOT_ID: u32 = 0;
 
     // -----Start revoking key slot-----
