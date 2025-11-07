@@ -17,23 +17,23 @@ pub struct EcbJob {
 struct JobList([EcbJob; 2]);
 
 impl EcbJob {
+    // Check nRF54L15 datasheet
+    // 8.6.2 EasyDMA
+    // The scatter-gather functionality allows EasyDMA to collect data from multiple memory regions, instead of
+    // one contigous block. The memory regions are described by a job list. The job list consists of one or more
+    // job entries that consist of a 32-bit address field, 8-bit attribute field, and 24-bit length field.
+    // The attribute field must be set to 11.
     pub fn new(ptr: *const u8, length: u8) -> Self {
-        let p = ptr as u32;
-
         EcbJob {
-            ptr: p,
-            attr_and_len: [length, 0, 0, 11], // len: [
-                                              //     (length & 0xFF) as u8,
-                                              //     ((length >> 8) & 0xFF) as u8,
-                                              //     ((length >> 16) & 0xFF) as u8,
-                                              // ],
+            ptr: ptr as u32,
+            attr_and_len: [length, 0, 0, 11],
         }
     }
-
+    // A job list ends with a zero filled job entry
     pub const fn zero() -> Self {
         EcbJob {
             ptr: 0,
-            attr_and_len: [0, 0, 0, 0],
+            attr_and_len: [0; 4],
         }
     }
 }
