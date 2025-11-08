@@ -17,6 +17,14 @@ pub struct EcbJob {
 struct JobListInput([EcbJob; 5]);
 struct JobListOutput([EcbJob; 5]);
 
+#[repr(u8)]
+pub enum EcbJobAttr {
+    Alen = 11,
+    Mlen = 12,
+    Adata = 13,
+    Mdata = 14,
+}
+
 impl EcbJob {
     // Check nRF54L15 datasheet
     // 8.6.2 EasyDMA
@@ -24,10 +32,10 @@ impl EcbJob {
     // one contigous block. The memory regions are described by a job list. The job list consists of one or more
     // job entries that consist of a 32-bit address field, 8-bit attribute field, and 24-bit length field.
     // The attribute field must be set to 11.
-    pub fn new(ptr: *const u8, length: u8, tag: u8) -> Self {
+    pub fn new(ptr: *const u8, length: u8, tag: EcbJobAttr) -> Self {
         EcbJob {
             ptr: ptr as u32,
-            attr_and_len: [length, 0, 0, tag],
+            attr_and_len: [length, 0, 0, tag as u8],
         }
     }
     // A job list ends with a zero filled job entry
@@ -47,6 +55,7 @@ fn main() -> ! {
 
     info!("INFO1");
 
+    // CONFIG
     ccm.enable().write(|w| w.enable().enabled());
 
     // For protocols other than Bluetooth, the ADATAMASK register must be set to 0xFF
@@ -54,7 +63,10 @@ fn main() -> ! {
     ccm.adatamask()
         .write(|w| unsafe { w.adatamask().bits(0xFF) });
 
-    ccm.mode().write(|w| w.mode().encryption());
+    ccm.mode().write(|w| {
+        w.mode().encryption();
+        w.maclen().m16()
+    });
 
     // Key: 00000000000000000000000000000002
     // Plaintext: 0213243546576879acbdcedfe0f10213
@@ -66,68 +78,75 @@ fn main() -> ! {
 
     // INPUT
 
-    let alen_input_buf: [u8; 2] = 13u16.to_le_bytes();
-    info!("alen_input_buf: {:02x}", alen_input_buf);
+    let alen_input_buf: [u8; 4] = 13u32.to_le_bytes();
+    // info!("alen_input_buf: {:02x}", alen_input_buf);
     let alen_input_ptr = alen_input_buf.as_ptr();
     info!("alen_input_ptr: {:02x}", alen_input_ptr);
 
-    let mlen_input_buf: [u8; 2] = 16u16.to_le_bytes();
-    info!("mlen_input_buf: {:02x}", mlen_input_buf);
+    let mlen_input_buf: [u8; 4] = 16u32.to_le_bytes();
+    // info!("mlen_input_buf: {:02x}", mlen_input_buf);
     let mlen_input_ptr = mlen_input_buf.as_ptr();
     info!("mlen_input_ptr: {:02x}", mlen_input_ptr);
 
-    let aad_input_buf: [u8; 13] = [0x00; 13];
-    info!("aad_input_buf: {:02x}", aad_input_buf);
+    // let aad_input_buf: [u8; 16] = [0x00; 16];
+    // The last 3 are ignored, since we use 13 bytes.
+    // But we need 16 bytes to keep everything aligned
+    let aad_input_buf: [u8; 16] = [
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+        0x00,
+    ];
+    // info!("aad_input_buf: {:02x}", aad_input_buf);
     let aad_input_ptr = aad_input_buf.as_ptr();
     info!("aad_input_ptr: {:02x}", aad_input_ptr);
 
     let input_buf: [u8; 16] = [0x00; 16];
-    info!("input_buf: {:02x}", input_buf);
+    // info!("input_buf: {:02x}", input_buf);
     let in_ptr = input_buf.as_ptr();
     info!("in_ptr: {:02x}", in_ptr);
 
     let mut input_jobs = JobListInput([
-        EcbJob::new(alen_input_ptr, 2, 11), // ALEN
-        EcbJob::new(mlen_input_ptr, 2, 12), // MLEN
-        EcbJob::new(aad_input_ptr, 13, 13), // MDATA
-        EcbJob::new(in_ptr, 16, 14),        // ADATA
+        EcbJob::new(alen_input_ptr, 2, EcbJobAttr::Alen),
+        EcbJob::new(mlen_input_ptr, 2, EcbJobAttr::Mlen),
+        EcbJob::new(aad_input_ptr, 13, EcbJobAttr::Mdata),
+        EcbJob::new(in_ptr, 16, EcbJobAttr::Adata),
         EcbJob::zero(),
     ]);
 
     let input_jobs_ptr = core::ptr::addr_of_mut!(input_jobs) as *mut u8;
 
-    unsafe {
-        let sz = core::mem::size_of::<JobListInput>();
-        let foo = core::slice::from_raw_parts(input_jobs_ptr as *const u8, sz);
+    // unsafe {
+    //     let sz = core::mem::size_of::<JobListInput>();
+    //     let foo = core::slice::from_raw_parts(input_jobs_ptr as *const u8, sz);
 
-        info!("everything: {:02x}", foo);
-    }
+    //     info!("everything: {:02x}", foo);
+    // }
 
     // OUTPUT
 
-    let alen_output_buf: [u8; 2] = 13u16.to_le_bytes();
-    info!("alen_output_buf: {:02x}", alen_output_buf);
+    let alen_output_buf: [u8; 4] = 13u32.to_le_bytes();
+    // info!("alen_output_buf: {:02x}", alen_output_buf);
     let alen_output_ptr = alen_output_buf.as_ptr();
     info!("alen_output_ptr: {:02x}", alen_output_ptr);
 
-    let mlen_output_buf: [u8; 2] = 16u16.to_le_bytes();
-    info!("mlen_output_buf: {:02x}", mlen_output_buf);
+    let mlen_output_buf: [u8; 4] = 16u32.to_le_bytes();
+    // info!("mlen_output_buf: {:02x}", mlen_output_buf);
     let mlen_output_ptr = mlen_output_buf.as_ptr();
     info!("mlen_output_ptr: {:02x}", mlen_output_ptr);
 
-    let aad_output_buf: [u8; 13] = [0x00; 13];
-    info!("aad_output_buf: {:02x}", aad_output_buf);
+    let aad_output_buf: [u8; 16] = [0x00; 16];
+    // info!("aad_output_buf: {:02x}", aad_output_buf);
     let aad_output_ptr = aad_output_buf.as_ptr();
     info!("aad_output_ptr: {:02x}", aad_output_ptr);
 
-    let mut output_buf: [u8; 16] = [0x00; 16];
+    let mut output_buf: [u8; 32] = [0x00; 32];
     let out_ptr = core::ptr::addr_of_mut!(output_buf) as *mut u8;
+    info!("out_ptr: {:02x}", out_ptr);
 
     let mut output_jobs: JobListOutput = JobListOutput([
-        EcbJob::new(alen_output_ptr, 2, 11), // ALEN
-        EcbJob::new(mlen_output_ptr, 2, 12), // MLEN
-        EcbJob::new(aad_output_ptr, 13, 13), // ADATA
-        EcbJob::new(out_ptr, 16, 14),        // MDATA
+        EcbJob::new(alen_output_ptr, 2, EcbJobAttr::Alen),
+        EcbJob::new(mlen_output_ptr, 2, EcbJobAttr::Mlen),
+        EcbJob::new(aad_output_ptr, 13, EcbJobAttr::Adata),
+        EcbJob::new(out_ptr, 32, EcbJobAttr::Mdata),
         EcbJob::zero(),
     ]);
     let output_jobs_ptr = core::ptr::addr_of_mut!(output_jobs) as *mut u8;
@@ -167,7 +186,7 @@ fn main() -> ! {
 
     ccm.nonce()
         .value(3)
-        .write(|w| unsafe { w.value().bits(0xFFFFFFFF) });
+        .write(|w| unsafe { w.value().bits(0x0000023) });
     info!("INFO433");
 
     ccm.in_()
@@ -198,7 +217,10 @@ fn main() -> ! {
     }
 
     info!("Done");
-    info!("output_buf: {:02x}", output_buf);
+    info!("output: {:02x}", &output_buf[..16]);
+    info!("tag: {:02x}", &output_buf[16..]);
+
+    info!("aad_output_buf: {:02x}", &aad_output_buf[..13]);
 
     loop {
         cortex_m::asm::nop();
