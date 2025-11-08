@@ -10,7 +10,7 @@ use panic_probe as _;
 #[derive(Copy, Clone)]
 pub struct EcbJob {
     pub ptr: u32,              // data pointer
-    pub attr_and_len: [u8; 4], // must be 11 + len
+    pub attr_and_len: [u8; 4], // length (3 bytes) || attr (1 byte)
 }
 
 #[repr(C)]
@@ -26,12 +26,6 @@ pub enum EcbJobAttr {
 }
 
 impl EcbJob {
-    // Check nRF54L15 datasheet
-    // 8.6.2 EasyDMA
-    // The scatter-gather functionality allows EasyDMA to collect data from multiple memory regions, instead of
-    // one contigous block. The memory regions are described by a job list. The job list consists of one or more
-    // job entries that consist of a 32-bit address field, 8-bit attribute field, and 24-bit length field.
-    // The attribute field must be set to 11.
     pub fn new(ptr: *const u8, length: u8, tag: EcbJobAttr) -> Self {
         EcbJob {
             ptr: ptr as u32,
@@ -49,7 +43,7 @@ impl EcbJob {
 
 #[entry]
 fn main() -> ! {
-    info!("Starting nRF54L15 AES-ECB example...");
+    info!("Starting nRF54L15 AES-CCM example...");
     let p = nrf54l15_app_pac::Peripherals::take().unwrap();
     let ccm = p.global_ccm00_s;
 
@@ -209,18 +203,11 @@ fn main() -> ! {
         if err != 0 {
             info!("END={}, ERROR={}", end, err);
         }
-
-        // TODO: REMOVE DELAY
-        for _ in 0..500_000 {
-            cortex_m::asm::nop();
-        }
     }
 
     info!("Done");
     info!("output: {:02x}", &output_buf[..16]);
     info!("tag: {:02x}", &output_buf[16..]);
-
-    info!("aad_output_buf: {:02x}", &aad_output_buf[..13]);
 
     loop {
         cortex_m::asm::nop();
