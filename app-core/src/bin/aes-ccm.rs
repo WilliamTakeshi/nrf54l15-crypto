@@ -47,8 +47,6 @@ fn main() -> ! {
     let p = nrf54l15_app_pac::Peripherals::take().unwrap();
     let ccm = p.global_ccm00_s;
 
-    info!("INFO1");
-
     // CONFIG
     ccm.enable().write(|w| w.enable().enabled());
 
@@ -73,14 +71,10 @@ fn main() -> ! {
     // INPUT
 
     let alen_input_buf: [u8; 4] = 13u32.to_le_bytes();
-    // info!("alen_input_buf: {:02x}", alen_input_buf);
     let alen_input_ptr = alen_input_buf.as_ptr();
-    info!("alen_input_ptr: {:02x}", alen_input_ptr);
 
     let mlen_input_buf: [u8; 4] = 16u32.to_le_bytes();
-    // info!("mlen_input_buf: {:02x}", mlen_input_buf);
     let mlen_input_ptr = mlen_input_buf.as_ptr();
-    info!("mlen_input_ptr: {:02x}", mlen_input_ptr);
 
     // let aad_input_buf: [u8; 16] = [0x00; 16];
     // The last 3 are ignored, since we use 13 bytes.
@@ -89,9 +83,7 @@ fn main() -> ! {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
         0x00,
     ];
-    // info!("aad_input_buf: {:02x}", aad_input_buf);
     let aad_input_ptr = aad_input_buf.as_ptr();
-    info!("aad_input_ptr: {:02x}", aad_input_ptr);
 
     let input_buf: [u8; 16] = [0x00; 16];
     // info!("input_buf: {:02x}", input_buf);
@@ -108,33 +100,18 @@ fn main() -> ! {
 
     let input_jobs_ptr = core::ptr::addr_of_mut!(input_jobs) as *mut u8;
 
-    // unsafe {
-    //     let sz = core::mem::size_of::<JobListInput>();
-    //     let foo = core::slice::from_raw_parts(input_jobs_ptr as *const u8, sz);
-
-    //     info!("everything: {:02x}", foo);
-    // }
-
     // OUTPUT
-
     let alen_output_buf: [u8; 4] = 13u32.to_le_bytes();
-    // info!("alen_output_buf: {:02x}", alen_output_buf);
     let alen_output_ptr = alen_output_buf.as_ptr();
-    info!("alen_output_ptr: {:02x}", alen_output_ptr);
 
     let mlen_output_buf: [u8; 4] = 16u32.to_le_bytes();
-    // info!("mlen_output_buf: {:02x}", mlen_output_buf);
     let mlen_output_ptr = mlen_output_buf.as_ptr();
-    info!("mlen_output_ptr: {:02x}", mlen_output_ptr);
 
     let aad_output_buf: [u8; 16] = [0x00; 16];
-    // info!("aad_output_buf: {:02x}", aad_output_buf);
     let aad_output_ptr = aad_output_buf.as_ptr();
-    info!("aad_output_ptr: {:02x}", aad_output_ptr);
 
     let mut output_buf: [u8; 32] = [0x00; 32];
     let out_ptr = core::ptr::addr_of_mut!(output_buf) as *mut u8;
-    info!("out_ptr: {:02x}", out_ptr);
 
     let mut output_jobs: JobListOutput = JobListOutput([
         EcbJob::new(alen_output_ptr, 2, EcbJobAttr::Alen),
@@ -144,7 +121,6 @@ fn main() -> ! {
         EcbJob::zero(),
     ]);
     let output_jobs_ptr = core::ptr::addr_of_mut!(output_jobs) as *mut u8;
-    info!("INFO13");
 
     //The KEY.VALUE registers are populated as follows:
     // • KEY.VALUE[0] = 0x00000000
@@ -181,7 +157,6 @@ fn main() -> ! {
     ccm.nonce()
         .value(3)
         .write(|w| unsafe { w.value().bits(0x0000023) });
-    info!("INFO433");
 
     ccm.in_()
         .ptr()
@@ -190,15 +165,10 @@ fn main() -> ! {
         .ptr()
         .write(|w| unsafe { w.ptr().bits(output_jobs_ptr as u32) });
     ccm.tasks_start().write(|w| w.tasks_start().trigger());
-    info!("INFO54554");
 
     while ccm.events_end().read().bits() == 0 {
-        info!("INFO3232");
-
         let end = ccm.events_end().read().bits();
         let err = ccm.events_error().read().bits();
-
-        info!("END={}, ERROR={}", end, err);
 
         if err != 0 {
             info!("END={}, ERROR={}", end, err);
