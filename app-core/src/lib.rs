@@ -169,3 +169,51 @@ pub struct SxDesc {
     pub sz: u32,
     pub dmatag: u32,
 }
+
+// TODO: make this generic over the hash function
+pub fn cracen_hmac_sha256(key: &[u8], message: &[u8], out: &mut [u8; 32]) -> Result<(), ShaError> {
+    // ---- 1. Normalize key ----
+    const BLOCK: usize = 64;
+    let mut key_block = [0u8; BLOCK];
+
+    if key.len() > BLOCK {
+        // K = H(K)
+        let mut tmp = [0u8; 32];
+        cracen_sha256(key, &mut tmp)?;
+        key_block[..32].copy_from_slice(&tmp);
+    } else {
+        key_block[..key.len()].copy_from_slice(key);
+    }
+
+    // ---- 2. ipad / opad ----
+    let mut ipad = [0u8; BLOCK];
+    let mut opad = [0u8; BLOCK];
+
+    for i in 0..BLOCK {
+        let b = key_block[i];
+        ipad[i] = b ^ 0x36;
+        opad[i] = b ^ 0x5c;
+    }
+
+    // ---- 3. inner hash = SHA256(ipad || message) ----
+    let mut inner_buf = [0u8; BLOCK + 1024]; // static buffer, adjust if needed
+    let mut inner_len = 0;
+
+    inner_buf[..BLOCK].copy_from_slice(&ipad);
+    inner_len += BLOCK;
+
+    inner_buf[inner_len..inner_len + message.len()].copy_from_slice(message);
+    inner_len += message.len();
+
+    let mut inner_hash = [0u8; 32];
+    cracen_sha256(&inner_buf[..inner_len], &mut inner_hash)?;
+
+    // ---- 4. outer hash = SHA256(opad || inner_hash) ----
+    let mut outer_buf = [0u8; BLOCK + 32];
+    outer_buf[..BLOCK].copy_from_slice(&opad);
+    outer_buf[BLOCK..BLOCK + 32].copy_from_slice(&inner_hash);
+
+    cracen_sha256(&outer_buf, out)?;
+
+    Ok(())
+}
