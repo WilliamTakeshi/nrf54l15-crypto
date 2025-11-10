@@ -15,6 +15,8 @@ pub struct EcbJob {
 
 #[repr(C)]
 struct JobListInput([EcbJob; 5]);
+
+#[repr(C)]
 struct JobListOutput([EcbJob; 5]);
 
 #[repr(u8)]
