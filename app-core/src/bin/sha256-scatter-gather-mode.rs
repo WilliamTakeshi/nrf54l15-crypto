@@ -39,26 +39,27 @@ const fn hash_out_len(algo: HashAlg) -> usize {
 fn main() -> ! {
     info!("Starting nRF54L15 CryptoMaster SHA example...");
 
-    // let input = b"example";
+    let input = b"example";
+    info!("input: {:02x}", input);
 
-    // let mut out_sha1 = [0u8; 20];
-    // cracen_sha1(b"example", &mut out_sha1).unwrap();
-    // info!("output bytes SHA1: {:02x}", out_sha1);
+    let mut out_sha1 = [0u8; 20];
+    cracen_sha1(input, &mut out_sha1).unwrap();
+    info!("output bytes SHA1: {:02x}", out_sha1);
 
-    // let mut out_sha224 = [0u8; 28];
-    // cracen_sha224(b"example", &mut out_sha224).unwrap();
-    // info!("output bytes SHA2_224: {:02x}", out_sha224);
+    let mut out_sha224 = [0u8; 28];
+    cracen_sha224(input, &mut out_sha224).unwrap();
+    info!("output bytes SHA2_224: {:02x}", out_sha224);
 
-    // let mut out_sha256 = [0u8; 32];
-    // cracen_sha256(b"example", &mut out_sha256).unwrap();
-    // info!("output bytes SHA2_256: {:02x}", out_sha256);
+    let mut out_sha256 = [0u8; 32];
+    cracen_sha256(input, &mut out_sha256).unwrap();
+    info!("output bytes SHA2_256: {:02x}", out_sha256);
 
-    // let mut out_sha384 = [0u8; 48];
-    // cracen_sha384(b"example", &mut out_sha384).unwrap();
-    // info!("output bytes SHA2_384: {:02x}", out_sha384);
+    let mut out_sha384 = [0u8; 48];
+    cracen_sha384(input, &mut out_sha384).unwrap();
+    info!("output bytes SHA2_384: {:02x}", out_sha384);
 
     let mut out_sha512 = [0u8; 64];
-    cracen_sha512(b"example", &mut out_sha512).unwrap();
+    cracen_sha512(input, &mut out_sha512).unwrap();
     info!("output bytes SHA2_512: {:02x}", out_sha512);
 
     loop {
@@ -98,7 +99,9 @@ fn cracen_hash<const N: usize>(
         return Err(ShaError::InvalidInput);
     }
 
-    let p = nrf54l15_app_pac::Peripherals::take().unwrap();
+    // TODO: Steal isn't the right way of doing it.
+    // In production you should take once and pass the reference
+    let p = unsafe { nrf54l15_app_pac::Peripherals::steal() };
 
     let dma = p.global_cracencore_s.cryptmstrdma();
 
