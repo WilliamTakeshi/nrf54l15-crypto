@@ -121,7 +121,7 @@ fn cracen_hash<const N: usize>(
     let mut out_desc = SxDesc {
         addr: out_ptr,
         next: last_desc,
-        sz: 0x2000_0000 + N as u32,
+        sz: sz(N),
         dmatag: 32,
     };
 
@@ -137,7 +137,7 @@ fn cracen_hash<const N: usize>(
     let mut in_desc = SxDesc {
         addr: header.as_mut_ptr(),
         next: &mut mid_desc,
-        sz: 0x2000_0004,
+        sz: sz(4),
         dmatag: 19,
     };
 
@@ -194,10 +194,10 @@ fn dmatag_for(input: usize) -> u32 {
     }
 }
 
-// TODO: Remove magic numbers
 fn sz(n: usize) -> u32 {
+    const DMA_REALIGN: usize = 0x2000_0000;
     let group_end = ((n - 1) / 4 + 1) * 4;
-    (group_end | 0x2000_0000).try_into().unwrap()
+    (group_end | DMA_REALIGN).try_into().unwrap()
 }
 
 #[repr(C)]
