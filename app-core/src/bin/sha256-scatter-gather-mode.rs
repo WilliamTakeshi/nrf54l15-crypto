@@ -19,7 +19,13 @@ enum HashAlg {
     // Sm3 = 0x40,      // TODO: implement
 }
 
-const fn hash_output_len(algo: HashAlg) -> usize {
+#[derive(Debug)]
+pub enum ShaError {
+    Busy,
+    InvalidInput,
+}
+
+const fn hash_out_len(algo: HashAlg) -> usize {
     match algo {
         HashAlg::Sha1 => 20,
         HashAlg::Sha2_224 => 28,
@@ -32,74 +38,121 @@ const fn hash_output_len(algo: HashAlg) -> usize {
 #[entry]
 fn main() -> ! {
     info!("Starting nRF54L15 CryptoMaster SHA example...");
-    const HASH_ALGO: HashAlg = HashAlg::Sha1;
-    const OUTPUT_BUF_LEN: usize = hash_output_len(HASH_ALGO);
-    const INPUT_BUF_LEN: usize = 14;
-    static mut INPUT: [u8; INPUT_BUF_LEN] = *b"Example string";
+
+    // let input = b"example";
+
+    // let mut out_sha1 = [0u8; 20];
+    // cracen_sha1(b"example", &mut out_sha1).unwrap();
+    // info!("output bytes SHA1: {:02x}", out_sha1);
+
+    // let mut out_sha224 = [0u8; 28];
+    // cracen_sha224(b"example", &mut out_sha224).unwrap();
+    // info!("output bytes SHA2_224: {:02x}", out_sha224);
+
+    // let mut out_sha256 = [0u8; 32];
+    // cracen_sha256(b"example", &mut out_sha256).unwrap();
+    // info!("output bytes SHA2_256: {:02x}", out_sha256);
+
+    // let mut out_sha384 = [0u8; 48];
+    // cracen_sha384(b"example", &mut out_sha384).unwrap();
+    // info!("output bytes SHA2_384: {:02x}", out_sha384);
+
+    let mut out_sha512 = [0u8; 64];
+    cracen_sha512(b"example", &mut out_sha512).unwrap();
+    info!("output bytes SHA2_512: {:02x}", out_sha512);
+
+    loop {
+        cortex_m::asm::nop();
+    }
+}
+
+pub fn cracen_sha1(input: &[u8], out: &mut [u8; 20]) -> Result<(), ShaError> {
+    cracen_hash(input, out, HashAlg::Sha1)
+}
+
+pub fn cracen_sha224(input: &[u8], out: &mut [u8; 28]) -> Result<(), ShaError> {
+    cracen_hash(input, out, HashAlg::Sha2_224)
+}
+
+pub fn cracen_sha256(input: &[u8], out: &mut [u8; 32]) -> Result<(), ShaError> {
+    cracen_hash(input, out, HashAlg::Sha2_256)
+}
+
+pub fn cracen_sha384(input: &[u8], out: &mut [u8; 48]) -> Result<(), ShaError> {
+    cracen_hash(input, out, HashAlg::Sha2_384)
+}
+
+pub fn cracen_sha512(input: &[u8], out: &mut [u8; 64]) -> Result<(), ShaError> {
+    cracen_hash(input, out, HashAlg::Sha2_512)
+}
+
+fn cracen_hash<const N: usize>(
+    input: &[u8],
+    out: &mut [u8; N],
+    alg: HashAlg,
+) -> Result<(), ShaError> {
+    if N != hash_out_len(alg) {
+        return Err(ShaError::InvalidInput);
+    }
+    if input.is_empty() {
+        return Err(ShaError::InvalidInput);
+    }
 
     let p = nrf54l15_app_pac::Peripherals::take().unwrap();
 
-    let mut output_buf: [u8; OUTPUT_BUF_LEN] = [0x00; OUTPUT_BUF_LEN];
-    let output_buf_ptr = output_buf.as_mut_ptr();
+    let dma = p.global_cracencore_s.cryptmstrdma();
 
-    let mut bytes_hash: [u8; 4] = [HASH_ALGO as u8, 0x06, 0x00, 0x00];
-    let addr_hash = bytes_hash.as_mut_ptr();
+    let out_ptr = out.as_mut_ptr();
 
-    let dmatag = dmatag_for(INPUT_BUF_LEN);
-    let sz = sz(INPUT_BUF_LEN);
+    // 4-byte algorithm header
+    let mut header = [alg as u8, 0x06, 0x00, 0x00];
 
-    // Last descriptor
+    // Last descriptor (address = 1)
     #[allow(
         clippy::manual_dangling_ptr,
         reason = "nRF54L15 needs this pointer to be on address 1"
     )]
-    let last_descriptor: *mut SxDesc = 1 as *mut SxDesc;
+    let last_desc: *mut SxDesc = 1 as *mut SxDesc;
 
-    // Outer descriptor (output)
-    let mut output_outer = SxDesc {
-        addr: output_buf_ptr,
-        next: last_descriptor,
-        sz: (0x20000000 + OUTPUT_BUF_LEN as u32),
+    // Output descriptor
+    let mut out_desc = SxDesc {
+        addr: out_ptr,
+        next: last_desc,
+        sz: 0x2000_0000 + N as u32,
         dmatag: 32,
     };
 
     // Middle descriptor (input)
-    let mut input_mid = SxDesc {
-        addr: core::ptr::addr_of_mut!(INPUT) as *mut u8, // "Example string"
-        next: last_descriptor,
-        sz,
-        dmatag,
+    let mut mid_desc = SxDesc {
+        addr: input.as_ptr() as *mut u8,
+        next: last_desc,
+        sz: sz(input.len()),
+        dmatag: dmatag_for(input.len()),
     };
 
     // Outer descriptor (input)
-    let mut input_outer = SxDesc {
-        addr: addr_hash,
-        next: &mut input_mid as *mut SxDesc,
-        sz: 536870916, // 0x20000004
+    let mut in_desc = SxDesc {
+        addr: header.as_mut_ptr(),
+        next: &mut mid_desc,
+        sz: 0x2000_0004,
         dmatag: 19,
     };
 
-    // Enable CryptoMaster
+    // Enable cryptomaster
     p.global_cracen_s.enable().write(|w| {
         w.cryptomaster().set_bit();
         w.rng().set_bit();
         w.pkeikg().set_bit()
     });
 
-    let dma = p.global_cracencore_s.cryptmstrdma();
-
-    let output_outer_ptr = &mut output_outer as *mut SxDesc;
-    let input_outer_ptr = &mut input_outer as *mut SxDesc;
-
-    // 1. Configure DMA fetch (input)
+    // Configure DMA source
     dma.fetchaddrlsb()
-        .write(|w| unsafe { w.bits(input_outer_ptr as u32) });
+        .write(|w| unsafe { w.bits((&mut in_desc) as *mut _ as u32) });
 
-    // 2. Configure DMA push (output)
+    // Configure DMA sink
     dma.pushaddrlsb()
-        .write(|w| unsafe { w.bits(output_outer_ptr as u32) });
+        .write(|w| unsafe { w.bits((&mut out_desc) as *mut _ as u32) });
 
-    // 3. Configure DMA
     dma.config().write(|w| {
         w.fetchctrlindirect().set_bit();
         w.pushctrlindirect().set_bit();
@@ -108,22 +161,20 @@ fn main() -> ! {
         w.softrst().clear_bit()
     });
 
+    // Start DMA
     dma.start().write(|w| {
         w.startfetch().set_bit();
         w.startpush().set_bit()
     });
 
+    // Wait
     while dma.status().read().fetchbusy().bit_is_set() {}
     while dma.status().read().pushbusy().bit_is_set() {}
 
-    // output
-    info!("output bytes: {:02x}", output_buf);
-
-    loop {
-        cortex_m::asm::nop();
-    }
+    Ok(())
 }
 
+// TODO: Remove magic numbers
 fn dmatag_for(input: usize) -> u32 {
     const TAG_BASE: u32 = 0x23;
     const TAG_0: u32 = 0x000;
@@ -140,6 +191,7 @@ fn dmatag_for(input: usize) -> u32 {
     }
 }
 
+// TODO: Remove magic numbers
 fn sz(n: usize) -> u32 {
     let group_end = ((n - 1) / 4 + 1) * 4;
     (group_end | 0x2000_0000).try_into().unwrap()
