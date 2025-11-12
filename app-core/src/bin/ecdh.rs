@@ -4,7 +4,7 @@
 use cortex_m_rt::entry;
 use defmt::info;
 use defmt_rtt as _;
-use nrf54l15_app_pac::{self, global_cracen_s};
+use nrf54l15_app_pac;
 use panic_probe as _;
 
 #[entry]
@@ -19,16 +19,12 @@ fn main() -> ! {
         w.pkeikg().set_bit()
     });
 
+    unsafe { load_microcode(&MICROCODE) };
+
     let cracen = p.global_cracencore_s;
 
     while cracen.pk().status().read().pkbusy().bit_is_set() {}
     while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
-
-    // unsafe { load_microcode() };
-
-    for _ in 0..500_000 {
-        cortex_m::asm::nop();
-    }
 
     // TODO: shrink this unsafe
     unsafe {
@@ -40,45 +36,36 @@ fn main() -> ! {
             w.swapbytes().set_bit()
         });
 
-        info!("command: {}", cracen.pk().command().read().bits());
-
         while cracen.pk().status().read().pkbusy().bit_is_set() {}
+        while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
 
         let scalar: [u8; 32] = [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x02,
+            0x00, 0x00, 0x00, 0x04,
         ];
 
-        write_block(slot_addr(8), &scalar); // Block 8
-
+        write_block::<32>(slot_addr(8), &scalar); // Block 8
         let pub_key_x: [u8; 32] = [
             0x5E, 0xCB, 0xE4, 0xD1, 0xA6, 0x33, 0x0A, 0x44, 0xC8, 0xF7, 0xEF, 0x95, 0x1D, 0x4B,
             0xF1, 0x65, 0xE6, 0xC6, 0xB7, 0x21, 0xEF, 0xAD, 0xA9, 0x85, 0xFB, 0x41, 0x66, 0x1B,
             0xC6, 0xE7, 0xFD, 0x6C,
         ];
 
-        write_block(slot_addr(12), &pub_key_x); // Block 12
+        write_block::<32>(slot_addr(12), &pub_key_x); // Block 12
 
         let pub_key_y: [u8; 32] = [
             0x87, 0x34, 0x64, 0x0C, 0x49, 0x98, 0xFF, 0x7E, 0x37, 0x4B, 0x06, 0xCE, 0x1A, 0x64,
             0xA2, 0xEC, 0xD8, 0x2A, 0xB0, 0x36, 0x38, 0x4F, 0xB8, 0x3D, 0x9A, 0x79, 0xB1, 0x27,
             0xA2, 0x7D, 0x50, 0x32,
         ];
-        write_block(slot_addr(13), &pub_key_y); // Block 13
+        write_block::<32>(slot_addr(13), &pub_key_y); // Block 13
 
         cracen.pk().pointers().write(|w| {
             w.opptra().bits(12);
             w.opptrb().bits(8);
             w.opptrc().bits(10)
         });
-        let foo2 = cracen.pk().command().read().bits();
-
-        info!("foo2: {:x}", foo2);
-
-        // p.global_cracen_s
-        //     .protectedramlock()
-        //     .write(|w| w.enable().set_bit());
 
         cracen.pk().control().write(|w| {
             w.start().set_bit();
@@ -86,51 +73,40 @@ fn main() -> ! {
         });
     }
 
+    while cracen.pk().status().read().pkbusy().bit_is_set() {}
+    while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
     info!("Done");
 
+    let bytes = unsafe { read32_bytes(slot_addr(10)) };
+    info!("P-256 X: {:02x}", bytes);
+
+    let bytes = unsafe { read32_bytes(slot_addr(11)) };
+    info!("P-256 Y: {:02x}", bytes);
+
     loop {
-        info!(
-            "all_error {:b},
-errorflags: {:b}, pkbusy: {:b}, intrptstatus: {:b}, failptr: {:b}",
-            cracen.pk().status().read().bits(),
-            cracen.pk().status().read().errorflags().bits(),
-            cracen.pk().status().read().pkbusy().bit_is_set(),
-            cracen.pk().status().read().intrptstatus().bit_is_set(),
-            cracen.pk().status().read().failptr().bits(),
-        );
-        cortex_m::asm::nop();
-
-        for i in 0..16 {
-            let bytes = unsafe { read32_bytes(slot_addr(i)) };
-            if bytes != &[0x00; 32][..] {
-                info!("Bytes slot {:x} ({:02}): {:02x}", i, i, bytes);
-            }
-        }
-
         for _ in 0..1_000_000 {
             cortex_m::asm::nop();
         }
     }
 }
 
-unsafe fn write_block(addr: u32, data: &[u8; 32]) {
+unsafe fn write_block<const N: usize>(addr: u32, data: &[u8; N]) {
     let mut p = addr as *mut u32;
     for chunk in data.chunks_exact(4) {
-        let v = u32::from_be_bytes(chunk.try_into().unwrap());
-        core::ptr::write_volatile(p, v);
-        p = p.add(1);
+        let v = u32::from_le_bytes(chunk.try_into().unwrap());
+        unsafe { core::ptr::write_volatile(p, v) }
+        p = unsafe { p.add(1) };
     }
 }
 
 pub unsafe fn read32_bytes(addr: u32) -> [u8; 32] {
     let mut out = [0u8; 32];
     let mut p: *const u32 = addr as *const u32;
-
     for i in 0..8 {
-        let v = core::ptr::read_volatile(p);
-        let bytes = v.to_be_bytes();
+        let v = unsafe { core::ptr::read_volatile(p) };
+        let bytes = v.to_le_bytes();
         out[i * 4..i * 4 + 4].copy_from_slice(&bytes);
-        p = p.add(1);
+        p = unsafe { p.add(1) }
     }
 
     out
@@ -141,8 +117,8 @@ pub unsafe fn read32_bytes(addr: u32) -> [u8; 32] {
 unsafe fn load_microcode(ucode: &[u32; 1223]) {
     let mut p = 0x5180_C000 as *mut u32;
     for word in ucode {
-        core::ptr::write_volatile(p, *word);
-        p = p.add(1);
+        unsafe { core::ptr::write_volatile(p, *word) };
+        p = unsafe { p.add(1) };
     }
 }
 
@@ -151,6 +127,7 @@ fn slot_addr(slot: u32) -> u32 {
     0x5180_8000 + slot * 0x200 + 0x1E0
 }
 
+// subsys/nrf_security/src/drivers/cracen/cracenpsa/src/microcode_binary.h
 const MICROCODE: [u32; 1223] = [
     0x408A3800, 0x4094408F, 0x40A640A1, 0x481540AC, 0x40AE40CB, 0x380040A3, 0x38003800, 0x40CE3800,
     0x419D40ED, 0x41564149, 0x41374132, 0x4141413C, 0x41BE41B9, 0x420E41D7, 0x418D41FA, 0x4180421B,
