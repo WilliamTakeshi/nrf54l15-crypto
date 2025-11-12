@@ -26,24 +26,17 @@ fn main() -> ! {
     while cracen.pk().status().read().pkbusy().bit_is_set() {}
     while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
 
-    // TODO: shrink this unsafe
+    //  Sign
     unsafe {
-        // 10101F22
-        // 10101F30
-        // 269492017
-        // 269492016
-        cracen.pk().command().write(|w| w.bits(0x10101F30));
-        // cracen.pk().command().write(|w| {
-        //     w.opeaddr().bits(0x30);
-        //     w.opbytesm1().bits(0b0000011111);
-        //     w.selcurve().p256();
-        //     w.swapbytes().set_bit()
-        // });
+        cracen.pk().command().write(|w| {
+            w.opeaddr().bits(0x30); // sign
+            w.opbytesm1().bits(0b0000011111);
+            w.selcurve().p256();
+            w.swapbytes().set_bit()
+        });
         while cracen.pk().status().read().pkbusy().bit_is_set() {}
         while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
 
-        // k = 3
-        // x = 5ECBE4D1A6330A44C8F7EF951D4BF165E6C6B721EFADA985FB41661BC6E7FD6C
         let priv_key: [u8; 32] = [
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -85,6 +78,10 @@ fn main() -> ! {
     let mut buf = [0u8; 128]; // 64 bytes * 2 hex chars
     let mut pos = 0;
 
+    for i in 0..16 {
+        info!("slot {} = address {:x}", i, slot_addr(i));
+    }
+
     let bytes_x = unsafe { read32_bytes(slot_addr(10)) };
     for b in bytes_x {
         pos = push_hex(&mut buf, pos, b);
@@ -97,6 +94,64 @@ fn main() -> ! {
 
     let s = core::str::from_utf8(&buf[..pos]).unwrap();
     info!("ECDSA sign: {}", s);
+
+    //  Verify
+    unsafe {
+        cracen.pk().command().write(|w| {
+            w.opeaddr().bits(0x31); // verify
+            w.opbytesm1().bits(0b0000011111);
+            w.selcurve().p256();
+            w.swapbytes().set_bit()
+        });
+        while cracen.pk().status().read().pkbusy().bit_is_set() {}
+        while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
+
+        let pub_key_x: [u8; 32] = [
+            0x7c, 0xf2, 0x7b, 0x18, 0x8d, 0x03, 0x4f, 0x7e, 0x8a, 0x52, 0x38, 0x03, 0x04, 0xb5,
+            0x1a, 0xc3, 0xc0, 0x89, 0x69, 0xe2, 0x77, 0xf2, 0x1b, 0x35, 0xa6, 0x0b, 0x48, 0xfc,
+            0x47, 0x66, 0x99, 0x78,
+        ];
+
+        let pub_key_y: [u8; 32] = [
+            0x07, 0x77, 0x55, 0x10, 0xdb, 0x8e, 0xd0, 0x40, 0x29, 0x3d, 0x9a, 0xc6, 0x9f, 0x74,
+            0x30, 0xdb, 0xba, 0x7d, 0xad, 0xe6, 0x3c, 0xe9, 0x82, 0x29, 0x9e, 0x04, 0xb7, 0x9d,
+            0x22, 0x78, 0x73, 0xd1,
+        ];
+
+        let sha256: [u8; 32] = [
+            0xcb, 0x1a, 0xd2, 0x11, 0x9d, 0x8f, 0xaf, 0xb6, 0x95, 0x66, 0x51, 0x0e, 0xe7, 0x12,
+            0x66, 0x1f, 0x9f, 0x14, 0xb8, 0x33, 0x85, 0x00, 0x6e, 0xf9, 0x2a, 0xec, 0x47, 0xf5,
+            0x23, 0xa3, 0x83, 0x58,
+        ];
+
+        write_block::<32>(slot_addr(8), &pub_key_x);
+        write_block::<32>(slot_addr(9), &pub_key_y);
+        write_block::<32>(slot_addr(10), &bytes_x);
+        write_block::<32>(slot_addr(11), &bytes_y);
+        write_block::<32>(slot_addr(12), &sha256);
+
+        cracen.pk().pointers().write(|w| {
+            w.opptra().bits(0);
+            w.opptrb().bits(8);
+            w.opptrc().bits(10)
+        });
+
+        cracen.pk().control().write(|w| {
+            w.start().set_bit();
+            w.clearirq().set_bit()
+        });
+    }
+
+    while cracen.pk().status().read().pkbusy().bit_is_set() {}
+    while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
+
+    if cracen.pk().status().read().errorflags().bits() != 0
+        || cracen.pk().status().read().failptr().bits() != 0
+    {
+        info!("Signature verification failed");
+    } else {
+        info!("Signature verified successfully");
+    }
 
     loop {
         info!(
