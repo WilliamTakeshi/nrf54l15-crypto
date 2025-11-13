@@ -28,27 +28,48 @@ const fn hash_out_len(algo: HashAlg) -> usize {
     }
 }
 
-pub fn cracen_sha1(input: &[u8], out: &mut [u8; 20]) -> Result<(), ShaError> {
-    cracen_hash(input, out, HashAlg::Sha1)
+pub fn cracen_sha1(
+    p: &nrf54l15_app_pac::Peripherals,
+    input: &[u8],
+    out: &mut [u8; 20],
+) -> Result<(), ShaError> {
+    cracen_hash(p, input, out, HashAlg::Sha1)
 }
 
-pub fn cracen_sha224(input: &[u8], out: &mut [u8; 28]) -> Result<(), ShaError> {
-    cracen_hash(input, out, HashAlg::Sha2_224)
+pub fn cracen_sha224(
+    p: &nrf54l15_app_pac::Peripherals,
+    input: &[u8],
+    out: &mut [u8; 28],
+) -> Result<(), ShaError> {
+    cracen_hash(p, input, out, HashAlg::Sha2_224)
 }
 
-pub fn cracen_sha256(input: &[u8], out: &mut [u8; 32]) -> Result<(), ShaError> {
-    cracen_hash(input, out, HashAlg::Sha2_256)
+pub fn cracen_sha256(
+    p: &nrf54l15_app_pac::Peripherals,
+    input: &[u8],
+    out: &mut [u8; 32],
+) -> Result<(), ShaError> {
+    cracen_hash(p, input, out, HashAlg::Sha2_256)
 }
 
-pub fn cracen_sha384(input: &[u8], out: &mut [u8; 48]) -> Result<(), ShaError> {
-    cracen_hash(input, out, HashAlg::Sha2_384)
+pub fn cracen_sha384(
+    p: &nrf54l15_app_pac::Peripherals,
+    input: &[u8],
+    out: &mut [u8; 48],
+) -> Result<(), ShaError> {
+    cracen_hash(p, input, out, HashAlg::Sha2_384)
 }
 
-pub fn cracen_sha512(input: &[u8], out: &mut [u8; 64]) -> Result<(), ShaError> {
-    cracen_hash(input, out, HashAlg::Sha2_512)
+pub fn cracen_sha512(
+    p: &nrf54l15_app_pac::Peripherals,
+    input: &[u8],
+    out: &mut [u8; 64],
+) -> Result<(), ShaError> {
+    cracen_hash(p, input, out, HashAlg::Sha2_512)
 }
 
 fn cracen_hash<const N: usize>(
+    p: &nrf54l15_app_pac::Peripherals,
     input: &[u8],
     out: &mut [u8; N],
     alg: HashAlg,
@@ -59,10 +80,6 @@ fn cracen_hash<const N: usize>(
     if input.is_empty() {
         return Err(ShaError::InvalidInput);
     }
-
-    // TODO: Steal isn't the right way of doing it.
-    // In production you should take once and pass the reference
-    let p = unsafe { nrf54l15_app_pac::Peripherals::steal() };
 
     let dma = p.global_cracencore_s.cryptmstrdma();
 
@@ -171,7 +188,12 @@ pub struct SxDesc {
 }
 
 // TODO: make this generic over the hash function
-pub fn cracen_hmac_sha256(key: &[u8], message: &[u8], out: &mut [u8; 32]) -> Result<(), ShaError> {
+pub fn cracen_hmac_sha256(
+    p: &nrf54l15_app_pac::Peripherals,
+    key: &[u8],
+    message: &[u8],
+    out: &mut [u8; 32],
+) -> Result<(), ShaError> {
     // ---- 1. Normalize key ----
     const BLOCK: usize = 64;
     let mut key_block = [0u8; BLOCK];
@@ -179,7 +201,7 @@ pub fn cracen_hmac_sha256(key: &[u8], message: &[u8], out: &mut [u8; 32]) -> Res
     if key.len() > BLOCK {
         // K = H(K)
         let mut tmp = [0u8; 32];
-        cracen_sha256(key, &mut tmp)?;
+        cracen_sha256(p, key, &mut tmp)?;
         key_block[..32].copy_from_slice(&tmp);
     } else {
         key_block[..key.len()].copy_from_slice(key);
@@ -206,14 +228,14 @@ pub fn cracen_hmac_sha256(key: &[u8], message: &[u8], out: &mut [u8; 32]) -> Res
     inner_len += message.len();
 
     let mut inner_hash = [0u8; 32];
-    cracen_sha256(&inner_buf[..inner_len], &mut inner_hash)?;
+    cracen_sha256(p, &inner_buf[..inner_len], &mut inner_hash)?;
 
     // ---- 4. outer hash = SHA256(opad || inner_hash) ----
     let mut outer_buf = [0u8; BLOCK + 32];
     outer_buf[..BLOCK].copy_from_slice(&opad);
     outer_buf[BLOCK..BLOCK + 32].copy_from_slice(&inner_hash);
 
-    cracen_sha256(&outer_buf, out)?;
+    cracen_sha256(p, &outer_buf, out)?;
 
     Ok(())
 }

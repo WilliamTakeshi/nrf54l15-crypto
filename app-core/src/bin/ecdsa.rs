@@ -18,17 +18,16 @@ fn main() -> ! {
         w.cryptomaster().set_bit();
         w.pkeikg().set_bit()
     });
-
     unsafe { load_microcode(&MICROCODE) };
+
+    let input = b"example";
+    let mut sha256 = [0u8; 32];
+    app_core::cracen_sha256(&p, input, &mut sha256).unwrap();
 
     let cracen = p.global_cracencore_s;
 
     while cracen.pk().status().read().pkbusy().bit_is_set() {}
     while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
-
-    let input = b"example";
-    let mut sha256 = [0u8; 32];
-    app_core::cracen_sha256(input, &mut sha256).unwrap();
 
     //  Sign
     unsafe {
