@@ -50,8 +50,6 @@ fn main() -> ! {
     let mut sha256 = [0u8; 32];
     app_core::cracen_sha256(&p, input, &mut sha256).unwrap();
 
-    let cracen = p.global_cracencore_s;
-
     info!("Done");
 
     // Printing Result
@@ -63,72 +61,31 @@ fn main() -> ! {
     for b in bytes_y {
         pos = push_hex(&mut buf, pos, b);
     }
-    info!("ECDSA sign: {}", s);
 
-    //  Verify
-    unsafe {
-        cracen.pk().command().write(|w| {
-            w.opeaddr().bits(0x31); // verify
-            w.opbytesm1().bits(0b0000011111);
-            w.selcurve().p256();
-            w.swapbytes().set_bit()
-        });
-        while cracen.pk().status().read().pkbusy().bit_is_set() {}
-        while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
+    info!("ECDSA sign: {}", core::str::from_utf8(&buf[..]).unwrap());
 
-        let pub_key_x: [u8; 32] = [
-            0x7c, 0xf2, 0x7b, 0x18, 0x8d, 0x03, 0x4f, 0x7e, 0x8a, 0x52, 0x38, 0x03, 0x04, 0xb5,
-            0x1a, 0xc3, 0xc0, 0x89, 0x69, 0xe2, 0x77, 0xf2, 0x1b, 0x35, 0xa6, 0x0b, 0x48, 0xfc,
-            0x47, 0x66, 0x99, 0x78,
-        ];
+    let pub_key_x: [u8; 32] = [
+        0x7c, 0xf2, 0x7b, 0x18, 0x8d, 0x03, 0x4f, 0x7e, 0x8a, 0x52, 0x38, 0x03, 0x04, 0xb5, 0x1a,
+        0xc3, 0xc0, 0x89, 0x69, 0xe2, 0x77, 0xf2, 0x1b, 0x35, 0xa6, 0x0b, 0x48, 0xfc, 0x47, 0x66,
+        0x99, 0x78,
+    ];
 
-        let pub_key_y: [u8; 32] = [
-            0x07, 0x77, 0x55, 0x10, 0xdb, 0x8e, 0xd0, 0x40, 0x29, 0x3d, 0x9a, 0xc6, 0x9f, 0x74,
-            0x30, 0xdb, 0xba, 0x7d, 0xad, 0xe6, 0x3c, 0xe9, 0x82, 0x29, 0x9e, 0x04, 0xb7, 0x9d,
-            0x22, 0x78, 0x73, 0xd1,
-        ];
+    let pub_key_y: [u8; 32] = [
+        0x07, 0x77, 0x55, 0x10, 0xdb, 0x8e, 0xd0, 0x40, 0x29, 0x3d, 0x9a, 0xc6, 0x9f, 0x74, 0x30,
+        0xdb, 0xba, 0x7d, 0xad, 0xe6, 0x3c, 0xe9, 0x82, 0x29, 0x9e, 0x04, 0xb7, 0x9d, 0x22, 0x78,
+        0x73, 0xd1,
+    ];
 
-        write_block::<32>(slot_addr(8), &pub_key_x);
-        write_block::<32>(slot_addr(9), &pub_key_y);
-        write_block::<32>(slot_addr(10), &bytes_x);
-        write_block::<32>(slot_addr(11), &bytes_y);
-        write_block::<32>(slot_addr(12), &sha256);
+    let verified = cracen_ecdsa_verify(&p, input, &bytes_x, &bytes_y, &pub_key_x, &pub_key_y);
 
-        cracen.pk().pointers().write(|w| {
-            w.opptra().bits(0);
-            w.opptrb().bits(8);
-            w.opptrc().bits(10)
-        });
-
-        cracen.pk().control().write(|w| {
-            w.start().set_bit();
-            w.clearirq().set_bit()
-        });
-    }
-
-    while cracen.pk().status().read().pkbusy().bit_is_set() {}
-    while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
-
-    if cracen.pk().status().read().errorflags().bits() != 0
-        || cracen.pk().status().read().failptr().bits() != 0
-    {
-        info!("Signature verification failed");
-    } else {
+    if verified {
         info!("Signature verified successfully");
+    } else {
+        info!("Signature verification failed");
     }
 
     loop {
-        info!(
-            "errorflags: {:b}, failptr: {:b}, pkbusy: {}, intrptstatus: {}",
-            cracen.pk().status().read().errorflags().bits(),
-            cracen.pk().status().read().failptr().bits(),
-            cracen.pk().status().read().pkbusy().bit_is_set(),
-            cracen.pk().status().read().intrptstatus().bit_is_set()
-        );
-
-        for _ in 0..1_000_000 {
-            cortex_m::asm::nop();
-        }
+        cortex_m::asm::nop();
     }
 }
 
@@ -189,6 +146,74 @@ pub fn cracen_ecdsa_sign(
     let bytes_s = unsafe { read32_bytes(slot_addr(11)) };
 
     Ok((bytes_r, bytes_s))
+}
+
+/// Verify an ECDSA-P256 signature using CRACEN.
+/// - `message`  → the message to hash (SHA-256 is computed inside)
+/// - `sig_r`    → 32-byte R component
+/// - `sig_s`    → 32-byte S component
+/// - `pk_x`     → public key X coordinate
+/// - `pk_y`     → public key Y coordinate
+pub fn cracen_ecdsa_verify(
+    p: &nrf54l15_app_pac::Peripherals,
+    message: &[u8],
+    sig_r: &[u8; 32],
+    sig_s: &[u8; 32],
+    pk_x: &[u8; 32],
+    pk_y: &[u8; 32],
+) -> bool {
+    let cracen = &p.global_cracencore_s;
+
+    // --- 1. Compute SHA-256 of the message ---
+    let mut hash = [0u8; 32];
+    app_core::cracen_sha256(p, message, &mut hash).unwrap();
+
+    // --- 2. Wait until CRACEN is idle ---
+    while cracen.pk().status().read().pkbusy().bit_is_set() {}
+    while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
+
+    unsafe {
+        // --- 3. Configure PK engine for ECDSA verify ---
+        cracen.pk().command().write(|w| {
+            w.opeaddr().bits(0x31); // ECDSA verify
+            w.opbytesm1().bits(0b0000011111); // 32 bytes - 1
+            w.selcurve().p256();
+            w.swapbytes().set_bit()
+        });
+
+        while cracen.pk().status().read().pkbusy().bit_is_set() {}
+        while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
+
+        // --- 4. Load operands into crypto RAM ---
+        write_block::<32>(slot_addr(8), pk_x); // P.x
+        write_block::<32>(slot_addr(9), pk_y); // P.y
+        write_block::<32>(slot_addr(10), sig_r); // R component
+        write_block::<32>(slot_addr(11), sig_s); // S component
+        write_block::<32>(slot_addr(12), &hash); // message hash
+
+        // --- 5. Set pointer table ---
+        cracen.pk().pointers().write(|w| {
+            w.opptra().bits(0);
+            w.opptrb().bits(8); // input A (pubkey)
+            w.opptrc().bits(10) // input B (signature R/S + hash)
+        });
+
+        // --- 6. Start operation ---
+        cracen.pk().control().write(|w| {
+            w.start().set_bit();
+            w.clearirq().set_bit()
+        });
+    }
+
+    // --- 7. Wait for completion ---
+    while cracen.pk().status().read().pkbusy().bit_is_set() {}
+    while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
+
+    // --- 8. Check result ---
+    let errors = cracen.pk().status().read().errorflags().bits();
+    let failptr = cracen.pk().status().read().failptr().bits();
+
+    errors == 0 && failptr == 0
 }
 
 unsafe fn write_block<const N: usize>(addr: u32, data: &[u8; N]) {
