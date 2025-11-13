@@ -20,3 +20,6 @@ nrf54l15-app-pac = { git = "https://github.com/WilliamTakeshi/nrf54l15-app-pac",
 # nrf54l15-app-pac = { path = "/home/william/projects/rust/nrf54l15-app-pac", version = "0.1.0", features = ["rt", "critical-section"] }
 # nrf54l15-app-pac = { git = "https://github.com/embassy-rs/nrf-pac", features = ["nrf54l15-app"] }
 # nrf54l15-app-pac = { version = "0.1.0", package = "nrf-pac", features = ["nrf54l15-app"] }
+
+# Rust crypto
+sha2 = { version = "0.10", default-features = false }
