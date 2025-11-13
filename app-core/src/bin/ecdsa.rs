@@ -76,10 +76,6 @@ fn main() -> ! {
     let mut buf = [0u8; 128]; // 64 bytes * 2 hex chars
     let mut pos = 0;
 
-    for i in 0..16 {
-        info!("slot {} = address {:x}", i, slot_addr(i));
-    }
-
     let bytes_x = unsafe { read32_bytes(slot_addr(10)) };
     for b in bytes_x {
         pos = push_hex(&mut buf, pos, b);
