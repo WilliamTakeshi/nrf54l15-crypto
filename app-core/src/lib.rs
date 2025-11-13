@@ -241,9 +241,10 @@ pub fn cracen_hmac_sha256(
 }
 
 pub fn rng(p: &nrf54l15_app_pac::Peripherals, buf: &mut [u8]) {
-    // TODO: check if we really need this for every try,
-    // maybe add a cracen setup before everything.
-    p.global_cracen_s.enable().write(|w| w.rng().set_bit());
+    // TODO: this need to be set before everything
+    // p.global_cracen_s.enable().write(|w| w.rng().set_bit());
+    // Consider enforcing this at initialization
+    // so the library cannot be used.
 
     p.global_cracencore_s
         .rngcontrol()
