@@ -9,12 +9,13 @@ use panic_probe as _;
 #[entry]
 fn main() -> ! {
     info!("Starting nRF54L15 CryptoMaster HMAC example...");
+    let p = nrf54l15_app_pac::Peripherals::take().unwrap();
 
     let key = b"supersecretkey";
     let message = b"hello world";
 
     let mut tag = [0u8; 32];
-    app_core::cracen_hmac_sha256(key, message, &mut tag).unwrap();
+    app_core::cracen_hmac_sha256(&p, key, message, &mut tag).unwrap();
 
     info!("HMAC-SHA256: {:02x}", tag);
 
