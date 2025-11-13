@@ -23,3 +23,5 @@ nrf54l15-app-pac = { git = "https://github.com/WilliamTakeshi/nrf54l15-app-pac",
 
 # Rust crypto
 sha2 = { version = "0.10", default-features = false }
+aes = { version = "0.8", default-features = false }
+cipher = "0.4"
