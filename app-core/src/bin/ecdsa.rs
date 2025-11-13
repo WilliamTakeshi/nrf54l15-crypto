@@ -20,69 +20,49 @@ fn main() -> ! {
     });
     unsafe { load_microcode(&MICROCODE) };
 
+    while p
+        .global_cracencore_s
+        .pk()
+        .status()
+        .read()
+        .pkbusy()
+        .bit_is_set()
+    {}
+    while p
+        .global_cracencore_s
+        .ikg()
+        .status()
+        .read()
+        .ctrdrbgbusy()
+        .bit_is_set()
+    {}
+
     let input = b"example";
+    let priv_key: [u8; 32] = [
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x02,
+    ];
+
+    let msg = b"example";
+    let (bytes_x, bytes_y) = cracen_ecdsa_sign(&p, msg, &priv_key).unwrap();
+
     let mut sha256 = [0u8; 32];
     app_core::cracen_sha256(&p, input, &mut sha256).unwrap();
 
-    let mut random = [0u8; 32];
-    app_core::rng(&p, &mut random);
-
     let cracen = p.global_cracencore_s;
 
-    while cracen.pk().status().read().pkbusy().bit_is_set() {}
-    while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
-
-    //  Sign
-    unsafe {
-        cracen.pk().command().write(|w| {
-            w.opeaddr().bits(0x30); // sign
-            w.opbytesm1().bits(0b0000011111);
-            w.selcurve().p256();
-            w.swapbytes().set_bit()
-        });
-        while cracen.pk().status().read().pkbusy().bit_is_set() {}
-        while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
-
-        let priv_key: [u8; 32] = [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x02,
-        ];
-
-        write_block::<32>(slot_addr(6), &priv_key); // 8de0
-        write_block::<32>(slot_addr(7), &random); // 8fe0
-        write_block::<32>(slot_addr(12), &sha256); // 99e0
-
-        cracen.pk().pointers().write(|w| {
-            w.opptra().bits(0);
-            w.opptrb().bits(8);
-            w.opptrc().bits(10)
-        });
-
-        cracen.pk().control().write(|w| {
-            w.start().set_bit();
-            w.clearirq().set_bit()
-        });
-    }
-
-    while cracen.pk().status().read().pkbusy().bit_is_set() {}
-    while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
     info!("Done");
 
+    // Printing Result
     let mut buf = [0u8; 128]; // 64 bytes * 2 hex chars
     let mut pos = 0;
-
-    let bytes_x = unsafe { read32_bytes(slot_addr(10)) };
     for b in bytes_x {
         pos = push_hex(&mut buf, pos, b);
     }
-
-    let bytes_y = unsafe { read32_bytes(slot_addr(11)) };
     for b in bytes_y {
         pos = push_hex(&mut buf, pos, b);
     }
-
-    let s = core::str::from_utf8(&buf[..pos]).unwrap();
     info!("ECDSA sign: {}", s);
 
     //  Verify
@@ -150,6 +130,65 @@ fn main() -> ! {
             cortex_m::asm::nop();
         }
     }
+}
+
+pub fn cracen_ecdsa_sign(
+    p: &nrf54l15_app_pac::Peripherals,
+    msg: &[u8],
+    priv_key: &[u8; 32],
+) -> Result<([u8; 32], [u8; 32]), ()> {
+    let cracen = &p.global_cracencore_s;
+
+    // 1. Hash message with SHA-256
+    let mut sha256 = [0u8; 32];
+    app_core::cracen_sha256(p, msg, &mut sha256).map_err(|_| ())?;
+
+    // 2. Get 32 bytes of randomness (nonce k)
+    let mut random = [0u8; 32];
+    app_core::rng(p, &mut random);
+
+    unsafe {
+        // 4. Configure PK for ECDSA-P256 sign
+        cracen.pk().command().write(|w| {
+            w.opeaddr().bits(0x30); // ECDSA sign micro-op
+            w.opbytesm1().bits(0b0000011111); // 32 bytes - 1
+            w.selcurve().p256(); // P-256 curve
+            w.swapbytes().set_bit()
+        });
+
+        // Wait again for command to settle
+        while cracen.pk().status().read().pkbusy().bit_is_set() {}
+        while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
+
+        // These slot numbers must match what the microcode expects.
+        // Here I keep your mapping:
+        write_block::<32>(slot_addr(6), &priv_key); // private key
+        write_block::<32>(slot_addr(7), &random); // nonce k
+        write_block::<32>(slot_addr(12), &sha256); // hash H(m)
+
+        // 6. Configure PK pointers.
+        cracen.pk().pointers().write(|w| {
+            w.opptra().bits(0); // depends on microcode; keep your values
+            w.opptrb().bits(8);
+            w.opptrc().bits(10)
+        });
+
+        // 7. Start operation
+        cracen.pk().control().write(|w| {
+            w.start().set_bit();
+            w.clearirq().set_bit()
+        });
+    }
+
+    // 8. Wait for completion
+    while cracen.pk().status().read().pkbusy().bit_is_set() {}
+    while cracen.ikg().status().read().ctrdrbgbusy().bit_is_set() {}
+
+    // 9. Read signature r,s from output slots (here: 10 and 11)
+    let bytes_r = unsafe { read32_bytes(slot_addr(10)) };
+    let bytes_s = unsafe { read32_bytes(slot_addr(11)) };
+
+    Ok((bytes_r, bytes_s))
 }
 
 unsafe fn write_block<const N: usize>(addr: u32, data: &[u8; N]) {
