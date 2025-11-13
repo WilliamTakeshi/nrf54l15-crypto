@@ -217,3 +217,49 @@ pub fn cracen_hmac_sha256(key: &[u8], message: &[u8], out: &mut [u8; 32]) -> Res
 
     Ok(())
 }
+
+pub fn rng(p: &nrf54l15_app_pac::Peripherals, buf: &mut [u8]) {
+    // TODO: check if we really need this for every try,
+    // maybe add a cracen setup before everything.
+    p.global_cracen_s.enable().write(|w| w.rng().set_bit());
+
+    p.global_cracencore_s
+        .rngcontrol()
+        .control()
+        .write(|w| w.enable().set_bit());
+
+    let mut idx = 0;
+
+    while idx < buf.len() {
+        let level = loop {
+            let l = p.global_cracencore_s.rngcontrol().fifolevel().read().bits() as usize;
+            if l > 0 {
+                break l;
+            }
+        };
+
+        for fifo_idx in 0..level {
+            if idx >= buf.len() {
+                break;
+            }
+
+            let rnd = p
+                .global_cracencore_s
+                .rngcontrol()
+                .fifo(fifo_idx)
+                .read()
+                .bits();
+            let bytes = rnd.to_le_bytes();
+
+            let remaining = buf.len() - idx;
+            let take = remaining.min(4);
+
+            buf[idx..idx + take].copy_from_slice(&bytes[..take]);
+            idx += take;
+
+            if idx >= buf.len() {
+                break;
+            }
+        }
+    }
+}
