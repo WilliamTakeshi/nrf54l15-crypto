@@ -287,7 +287,7 @@ pub fn rng(p: &nrf54l15_app_pac::Peripherals, buf: &mut [u8]) {
     }
 }
 
-unsafe fn write_block<const N: usize>(addr: u32, data: &[u8; N]) {
+pub unsafe fn write_block<const N: usize>(addr: u32, data: &[u8; N]) {
     let mut p = addr as *mut u32;
     for chunk in data.chunks_exact(4) {
         let v = u32::from_le_bytes(chunk.try_into().unwrap());
@@ -448,7 +448,7 @@ pub unsafe fn load_microcode() {
 }
 
 #[inline(always)]
-fn slot_addr(slot: u32) -> u32 {
+pub fn slot_addr(slot: u32) -> u32 {
     0x5180_8000 + slot * 0x200 + 0x1E0
 }
 
