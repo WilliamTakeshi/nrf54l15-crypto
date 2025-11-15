@@ -37,29 +37,11 @@ fn main() -> ! {
         .bit_is_set()
     {}
 
-    let input = b"example";
     let priv_key: [u8; 32] = [
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00, 0x02,
     ];
-
-    let msg = b"example";
-    let (bytes_x, bytes_y) = app_core::cracen_ecdsa_sign(&p, msg, &priv_key).unwrap();
-
-    info!("Done");
-
-    // Printing Result
-    let mut buf = [0u8; 128]; // 64 bytes * 2 hex chars
-    let mut pos = 0;
-    for b in bytes_x {
-        pos = push_hex(&mut buf, pos, b);
-    }
-    for b in bytes_y {
-        pos = push_hex(&mut buf, pos, b);
-    }
-
-    info!("ECDSA sign: {}", core::str::from_utf8(&buf[..]).unwrap());
 
     let pub_key_x: [u8; 32] = [
         0x7c, 0xf2, 0x7b, 0x18, 0x8d, 0x03, 0x4f, 0x7e, 0x8a, 0x52, 0x38, 0x03, 0x04, 0xb5, 0x1a,
@@ -73,18 +55,56 @@ fn main() -> ! {
         0x73, 0xd1,
     ];
 
-    let verified =
-        app_core::cracen_ecdsa_verify(&p, input, &bytes_x, &bytes_y, &pub_key_x, &pub_key_y);
+    let msg = b"example";
 
-    if verified {
-        info!("Signature verified successfully");
-    } else {
-        info!("Signature verification failed");
-    }
+    p.global_p2_s.pin_cnf(8).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(10).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(7).write(|w| w.dir().output());
+    p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+    p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
 
     loop {
-        cortex_m::asm::nop();
+        p.global_p2_s.outset().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outset().write(|w| w.pin10().bit(true));
+        let (bytes_x, bytes_y) = app_core::cracen_ecdsa_sign(&p, msg, &priv_key).unwrap();
+        p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
+        info!("Done");
+
+        // Printing Result
+        let mut buf = [0u8; 128]; // 64 bytes * 2 hex chars
+        let mut pos = 0;
+        for b in bytes_x {
+            pos = push_hex(&mut buf, pos, b);
+        }
+        for b in bytes_y {
+            pos = push_hex(&mut buf, pos, b);
+        }
+
+        info!("ECDSA sign: {}", core::str::from_utf8(&buf[..]).unwrap());
+        p.global_p2_s.outset().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outset().write(|w| w.pin10().bit(true));
+
+        let verified =
+            app_core::cracen_ecdsa_verify(&p, msg, &bytes_x, &bytes_y, &pub_key_x, &pub_key_y);
+
+        p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
+
+        if verified {
+            info!("Signature verified successfully");
+        } else {
+            info!("Signature verification failed");
+        }
+
+        for _ in 0..200_000 {
+            cortex_m::asm::nop();
+        }
     }
+
+    // loop {
+    //     cortex_m::asm::nop();
+    // }
 }
 
 fn push_hex(buf: &mut [u8], pos: usize, val: u8) -> usize {

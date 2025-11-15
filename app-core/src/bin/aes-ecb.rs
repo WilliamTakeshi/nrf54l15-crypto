@@ -65,45 +65,63 @@ fn main() -> ! {
     let mut output_jobs: JobList = JobList([EcbJob::new(out_ptr, 16), EcbJob::zero()]);
     let output_jobs_ptr = core::ptr::addr_of_mut!(output_jobs) as *mut u8;
 
-    //The KEY.VALUE registers are populated as follows:
-    // • KEY.VALUE[0] = 0x9DFB01BF
-    // • KEY.VALUE[1] = 0x36BCF34E
-    // • KEY.VALUE[2] = 0x39F574D8
-    // • KEY.VALUE[3] = 0x4C683841
-    ecb.key()
-        .value(0)
-        .write(|w| unsafe { w.value().bits(0x9DFB01BF) });
-    ecb.key()
-        .value(1)
-        .write(|w| unsafe { w.value().bits(0x36BCF34E) });
-    ecb.key()
-        .value(2)
-        .write(|w| unsafe { w.value().bits(0x39F574D8) });
-    ecb.key()
-        .value(3)
-        .write(|w| unsafe { w.value().bits(0x4C683841) });
+    p.global_p2_s.pin_cnf(8).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(10).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(7).write(|w| w.dir().output());
+    p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+    p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
 
-    ecb.in_()
-        .ptr()
-        .write(|w| unsafe { w.ptr().bits(input_jobs_ptr as u32) });
-    ecb.out()
-        .ptr()
-        .write(|w| unsafe { w.ptr().bits(output_jobs_ptr as u32) });
-    ecb.tasks_start().write(|w| w.tasks_start().trigger());
+    loop {
+        p.global_p2_s.outset().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outset().write(|w| w.pin10().bit(true));
 
-    while ecb.events_end().read().bits() == 0 {
-        let end = ecb.events_end().read().bits();
-        let err = ecb.events_error().read().bits();
+        //The KEY.VALUE registers are populated as follows:
+        // • KEY.VALUE[0] = 0x9DFB01BF
+        // • KEY.VALUE[1] = 0x36BCF34E
+        // • KEY.VALUE[2] = 0x39F574D8
+        // • KEY.VALUE[3] = 0x4C683841
+        ecb.key()
+            .value(0)
+            .write(|w| unsafe { w.value().bits(0x9DFB01BF) });
+        ecb.key()
+            .value(1)
+            .write(|w| unsafe { w.value().bits(0x36BCF34E) });
+        ecb.key()
+            .value(2)
+            .write(|w| unsafe { w.value().bits(0x39F574D8) });
+        ecb.key()
+            .value(3)
+            .write(|w| unsafe { w.value().bits(0x4C683841) });
 
-        if err != 0 {
-            info!("END={}, ERROR={}", end, err);
+        ecb.in_()
+            .ptr()
+            .write(|w| unsafe { w.ptr().bits(input_jobs_ptr as u32) });
+        ecb.out()
+            .ptr()
+            .write(|w| unsafe { w.ptr().bits(output_jobs_ptr as u32) });
+        ecb.tasks_start().write(|w| w.tasks_start().trigger());
+
+        while ecb.events_end().read().bits() == 0 {
+            let end = ecb.events_end().read().bits();
+            let err = ecb.events_error().read().bits();
+
+            if err != 0 {
+                info!("END={}, ERROR={}", end, err);
+            }
+        }
+
+        p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
+
+        info!("Done");
+        info!("output_buf: {:02x}", output_buf);
+
+        for _ in 0..200_000 {
+            cortex_m::asm::nop();
         }
     }
 
-    info!("Done");
-    info!("output_buf: {:02x}", output_buf);
-
-    loop {
-        cortex_m::asm::nop();
-    }
+    // loop {
+    //     cortex_m::asm::nop();
+    // }
 }

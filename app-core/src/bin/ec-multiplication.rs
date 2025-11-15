@@ -47,12 +47,33 @@ fn main() -> ! {
         0x50, 0x32,
     ];
 
-    app_core::cracen_ec_scalar_mul(&p, &scalar, &pub_key_x, &pub_key_y, &mut out_x, &mut out_y);
-
-    info!("Result X = {:02x}", out_x);
-    info!("Result Y = {:02x}", out_y);
+    p.global_p2_s.pin_cnf(8).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(10).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(7).write(|w| w.dir().output());
+    p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+    p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
 
     loop {
-        cortex_m::asm::nop();
+        let mut out_x = [0u8; 32];
+        let mut out_y = [0u8; 32];
+
+        p.global_p2_s.outset().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outset().write(|w| w.pin10().bit(true));
+
+        app_core::cracen_ec_scalar_mul(&p, &scalar, &pub_key_x, &pub_key_y, &mut out_x, &mut out_y);
+
+        p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
+
+        info!("Result X = {:02x}", out_x);
+        info!("Result Y = {:02x}", out_y);
+
+        for _ in 0..100_000 {
+            cortex_m::asm::nop();
+        }
     }
+
+    // loop {
+    //     cortex_m::asm::nop();
+    // }
 }

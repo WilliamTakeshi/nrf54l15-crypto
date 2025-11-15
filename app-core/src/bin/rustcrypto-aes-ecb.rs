@@ -24,17 +24,39 @@ fn main() -> ! {
         0x13,
     ]);
 
-    // Start
-    // Initialize AES
-    let cipher = Aes128::new(&key);
-
-    // Encrypt *in place*
-    cipher.encrypt_block(&mut block);
     // Finish
 
-    info!("AES-128-ECB(plaintext) = {:02x}", block.as_slice());
+    let p = nrf54l15_app_pac::Peripherals::take().unwrap();
+    p.global_p2_s.pin_cnf(8).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(10).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(7).write(|w| w.dir().output());
+    p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+    p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
+    let cipher = Aes128::new(&key);
 
     loop {
-        cortex_m::asm::nop();
+        let mut block = GenericArray::from([
+            0x02, 0x13, 0x24, 0x35, 0x46, 0x57, 0x68, 0x79, 0xac, 0xbd, 0xce, 0xdf, 0xe0, 0xf1,
+            0x02, 0x13,
+        ]);
+
+        p.global_p2_s.outset().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outset().write(|w| w.pin10().bit(true));
+
+        cipher.encrypt_block(&mut block);
+        p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
+
+        // Finish
+
+        info!("AES-128-ECB(plaintext) = {:02x}", block.as_slice());
+
+        for _ in 0..200_000 {
+            cortex_m::asm::nop();
+        }
     }
+
+    // loop {
+    //     cortex_m::asm::nop();
+    // }
 }

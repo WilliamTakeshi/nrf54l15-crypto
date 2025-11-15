@@ -39,22 +39,37 @@ fn main() -> ! {
 
     let p_affine = AffinePoint::from_encoded_point(&encoded).unwrap();
 
-    let p: ProjectivePoint = ProjectivePoint::from(p_affine);
+    let pp: ProjectivePoint = ProjectivePoint::from(p_affine);
+    let p = nrf54l15_app_pac::Peripherals::take().unwrap();
+
+    p.global_p2_s.pin_cnf(8).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(10).write(|w| w.dir().output());
+    p.global_p2_s.pin_cnf(7).write(|w| w.dir().output());
+    p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+    p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
 
     // perform Q = k*P
-    let q = p * k;
-
-    let encoded = q.to_encoded_point(false);
-    let x = encoded.x().unwrap();
-    let y = encoded.y().unwrap();
-
-    // Finish
-
-    info!("EC Mult k·P");
-    info!("X = {:02x}", x.as_slice());
-    info!("Y = {:02x}", y.as_slice());
-
     loop {
-        cortex_m::asm::nop();
+        p.global_p2_s.outset().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outset().write(|w| w.pin10().bit(true));
+
+        let q = pp * k;
+        let encoded = q.to_encoded_point(false);
+        let x = encoded.x().unwrap();
+        let y = encoded.y().unwrap();
+        p.global_p2_s.outclr().write(|w| w.pin8().bit(true));
+        p.global_p2_s.outclr().write(|w| w.pin10().bit(true));
+
+        info!("EC Mult k·P");
+        info!("X = {:02x}", x.as_slice());
+        info!("Y = {:02x}", y.as_slice());
+
+        for _ in 0..200_000 {
+            cortex_m::asm::nop();
+        }
     }
+
+    // loop {
+    //     cortex_m::asm::nop();
+    // }
 }
