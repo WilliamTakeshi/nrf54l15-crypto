@@ -14,6 +14,8 @@ use p256::{
 
 #[entry]
 fn main() -> ! {
+    unsafe { app_core::fill_stack() };
+
     info!("ECDSA no_std signing example...");
 
     let msg = b"example";
@@ -62,6 +64,9 @@ fn main() -> ! {
         for _ in 0..200_000 {
             cortex_m::asm::nop();
         }
+
+        let used = unsafe { app_core::measure_stack() };
+        info!("Used stack: {} bytes", used);
     }
 
     // loop {

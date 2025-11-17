@@ -10,6 +10,8 @@ use sha2::{Digest, Sha256};
 
 #[entry]
 fn main() -> ! {
+    unsafe { app_core::fill_stack() };
+
     // Start
     let msg = b"example";
     // Create a hasher and feed data
@@ -37,6 +39,9 @@ fn main() -> ! {
         for _ in 0..200_000 {
             cortex_m::asm::nop();
         }
+
+        let used = unsafe { app_core::measure_stack() };
+        info!("Used stack: {} bytes", used);
     }
 
     // loop {

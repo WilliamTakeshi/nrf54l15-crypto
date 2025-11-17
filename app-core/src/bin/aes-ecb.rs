@@ -40,6 +40,8 @@ impl EcbJob {
 
 #[entry]
 fn main() -> ! {
+    unsafe { app_core::fill_stack() };
+
     info!("Starting nRF54L15 AES-ECB example...");
     let p = nrf54l15_app_pac::Peripherals::take().unwrap();
     let ecb = p.global_ecb00_s;
@@ -119,6 +121,9 @@ fn main() -> ! {
         for _ in 0..200_000 {
             cortex_m::asm::nop();
         }
+
+        let used = unsafe { app_core::measure_stack() };
+        info!("Used stack: {} bytes", used);
     }
 
     // loop {

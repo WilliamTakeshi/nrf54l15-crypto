@@ -669,3 +669,36 @@ const MICROCODE: [u32; 1223] = [
     0x21261D00, 0x496B1013, 0x52BC2211, 0xD3E72126, 0x1A00E3EA, 0x8E0F6800, 0xA22C6C00, 0x5987100F,
     0x59871002, 0x2CA0A2A0, 0x59891015, 0xA2801A00, 0xA2902C80, 0x1A002C90, 0x5FD61EFA,
 ];
+
+unsafe extern "C" {
+    static mut _stack_start: u32; // high address
+    static mut _stack_end: u32; // low address
+}
+
+pub unsafe fn fill_stack() {
+    let mut p = &raw const _stack_end as *const u32 as *mut u32;
+    let end = &raw const _stack_start as *const u32 as *mut u32;
+
+    while p < end {
+        core::ptr::write_volatile(p, 0xDEADBEEF);
+        p = p.add(1);
+    }
+}
+
+pub unsafe fn measure_stack() -> usize {
+    let mut p = &raw const _stack_end as *const u32;
+    let end = &raw const _stack_start as *const u32;
+    let mut unused = 0usize;
+
+    while p < end {
+        if core::ptr::read_volatile(p) == 0xDEADBEEF {
+            unused += 4;
+            p = p.add(1);
+        } else {
+            break;
+        }
+    }
+
+    let total = (end as usize) - (&raw const _stack_end as *const u32 as usize);
+    total - unused
+}

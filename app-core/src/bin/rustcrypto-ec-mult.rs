@@ -12,6 +12,8 @@ use p256::{
 use panic_probe as _;
 #[entry]
 fn main() -> ! {
+    unsafe { app_core::fill_stack() };
+
     // Start
     // scalar = 2
     let k_bytes: [u8; 32] = [
@@ -67,6 +69,9 @@ fn main() -> ! {
         for _ in 0..200_000 {
             cortex_m::asm::nop();
         }
+
+        let used = unsafe { app_core::measure_stack() };
+        info!("Used stack: {} bytes", used);
     }
 
     // loop {

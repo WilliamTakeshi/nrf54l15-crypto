@@ -13,6 +13,8 @@ use aes::cipher::{BlockEncrypt, KeyInit};
 
 #[entry]
 fn main() -> ! {
+    unsafe { app_core::fill_stack() };
+
     // 128-bit AES key
     let key = GenericArray::from([
         0x4C, 0x68, 0x38, 0x41, 0x39, 0xF5, 0x74, 0xD8, 0x36, 0xBC, 0xF3, 0x4E, 0x9D, 0xFB, 0x01,
@@ -54,6 +56,9 @@ fn main() -> ! {
         for _ in 0..200_000 {
             cortex_m::asm::nop();
         }
+
+        let used = unsafe { app_core::measure_stack() };
+        info!("Used stack: {} bytes", used);
     }
 
     // loop {

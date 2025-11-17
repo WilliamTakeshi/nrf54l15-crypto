@@ -9,6 +9,8 @@ use panic_probe as _;
 
 #[entry]
 fn main() -> ! {
+    unsafe { app_core::fill_stack() };
+
     info!("Starting nRF54L15 ECDSA example...");
     let p = nrf54l15_app_pac::Peripherals::take().unwrap();
 
@@ -100,6 +102,8 @@ fn main() -> ! {
         for _ in 0..200_000 {
             cortex_m::asm::nop();
         }
+        let used = unsafe { app_core::measure_stack() };
+        info!("Used stack: {} bytes", used);
     }
 
     // loop {

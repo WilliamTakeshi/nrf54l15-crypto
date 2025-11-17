@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use core::ptr::{read_volatile, write_volatile};
 use cortex_m_rt::entry;
 use defmt::info;
 use defmt_rtt as _;
@@ -8,6 +9,8 @@ use panic_probe as _;
 
 #[entry]
 fn main() -> ! {
+    unsafe { app_core::fill_stack() };
+
     info!("Starting nRF54L15 CryptoMaster SHA example...");
     let p = nrf54l15_app_pac::Peripherals::take().unwrap();
     p.global_p2_s.pin_cnf(8).write(|w| w.dir().output());
@@ -53,5 +56,8 @@ fn main() -> ! {
         for _ in 0..100_000 {
             cortex_m::asm::nop();
         }
+
+        let used = unsafe { app_core::measure_stack() };
+        info!("Used stack: {} bytes", used);
     }
 }
