@@ -776,7 +776,8 @@ const LAST_DESC_PTR: *mut SxDesc = 1 as *mut SxDesc;
 
 pub struct HashState<const N: usize, const M: usize> {
     algorithm: HashAlg,
-    buf: heapless::Vec<u8, M>,
+    buf: [u8; M],
+    len: usize,
 }
 
 impl<const N: usize, const M: usize> HashState<N, M> {
@@ -785,17 +786,19 @@ impl<const N: usize, const M: usize> HashState<N, M> {
     pub fn init(algorithm: HashAlg) -> Self {
         Self {
             algorithm,
-            buf: heapless::Vec::new(),
+            buf: [0; M],
+            len: 0,
         }
     }
 
     // GOAL
     // pub fn update(&mut self, instance: &mut Self::HashState, data: &[u8]);
     pub fn update(&mut self, data: &[u8]) -> () {
-        if self.buf.len() + data.len() > M {
+        if self.len + data.len() > M {
             panic!("input bigger than expected")
         }
-        self.buf.extend_from_slice(data).unwrap();
+        self.buf[self.len..self.len + data.len()].copy_from_slice(data);
+        self.len += data.len();
         ()
     }
 
@@ -822,8 +825,8 @@ impl<const N: usize, const M: usize> HashState<N, M> {
         let mut data_desc = SxDesc {
             addr: self.buf.as_ptr() as *mut u8,
             next: LAST_DESC_PTR,
-            sz: sz(self.buf.len()),
-            dmatag: dmatag_for(self.buf.len()),
+            sz: sz(self.len),
+            dmatag: dmatag_for(self.len),
         };
 
         // Header descriptor (root)

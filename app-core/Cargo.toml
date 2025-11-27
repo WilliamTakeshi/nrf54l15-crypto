@@ -21,8 +21,6 @@ nrf54l15-app-pac = { git = "https://github.com/WilliamTakeshi/nrf54l15-app-pac",
 # nrf54l15-app-pac = { git = "https://github.com/embassy-rs/nrf-pac", features = ["nrf54l15-app"] }
 # nrf54l15-app-pac = { version = "0.1.0", package = "nrf-pac", features = ["nrf54l15-app"] }
 
-heapless = "0.9.2"
-
 # Rust crypto
 sha2 = { version = "0.10", default-features = false }
 aes = { version = "0.8", default-features = false }
