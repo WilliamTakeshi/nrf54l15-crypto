@@ -157,15 +157,16 @@ pub fn cracen_sha512(
 // }
 
 // TODO: Remove magic numbers
-fn dmatag_for(input: usize) -> u32 {
-    if input == 0 {
-        return 0x423;
-    }
+pub fn dmatag_for(input: usize) -> u32 {
     const TAG_BASE: u32 = 0x23;
     const TAG_0: u32 = 0x000;
     const TAG_1: u32 = 0x300;
     const TAG_2: u32 = 0x200;
     const TAG_3: u32 = 0x100;
+
+    if input == 0 {
+        return TAG_BASE | 0x400;
+    }
 
     match input % 4 {
         0 => TAG_BASE | TAG_0, // -> 0x023 = 35
@@ -176,13 +177,14 @@ fn dmatag_for(input: usize) -> u32 {
     }
 }
 
-fn sz(n: usize) -> u32 {
+pub fn sz(n: usize) -> u32 {
     const DMA_REALIGN: usize = 0x2000_0000;
     let group_end = (n.saturating_sub(1) / 4 + 1) * 4;
     (group_end | DMA_REALIGN) as u32
 }
 
-#[repr(C)]
+// #[repr(C)]
+#[repr(C, align(32))]
 #[derive(Debug, Clone, Copy, defmt::Format)]
 pub struct SxDesc {
     pub addr: *mut u8,
