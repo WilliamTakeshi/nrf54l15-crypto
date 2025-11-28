@@ -158,6 +158,9 @@ pub fn cracen_sha512(
 
 // TODO: Remove magic numbers
 fn dmatag_for(input: usize) -> u32 {
+    if input == 0 {
+        return 0x423;
+    }
     const TAG_BASE: u32 = 0x23;
     const TAG_0: u32 = 0x000;
     const TAG_1: u32 = 0x300;
@@ -175,7 +178,7 @@ fn dmatag_for(input: usize) -> u32 {
 
 fn sz(n: usize) -> u32 {
     const DMA_REALIGN: usize = 0x2000_0000;
-    let group_end = ((n - 1) / 4 + 1) * 4;
+    let group_end = (n.saturating_sub(1) / 4 + 1) * 4;
     (group_end | DMA_REALIGN) as u32
 }
 
@@ -680,9 +683,11 @@ fn cracen_hash<const N: usize>(
     if N != hash_out_len(alg) {
         return Err(ShaError::InvalidInput);
     }
-    if input.is_empty() {
-        return Err(ShaError::InvalidInput);
-    }
+    // if input.is_empty() {
+    //     return Err(ShaError::InvalidInput);
+    // }
+
+    info!("AAA");
 
     let dma = p.global_cracencore_s.cryptmstrdma();
 
