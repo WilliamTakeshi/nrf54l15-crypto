@@ -17,8 +17,8 @@ fn first_round() -> ([u8; 32], nrf54l15_app_pac::GlobalCracencoreS) {
 
     let dma = p.global_cracencore_s.cryptmstrdma();
 
-    // let input: &[u8; 64] = b"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    let input: &[u8; 64] = b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let input: &[u8; 64] = b"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    let input2: &[u8; 128] = b"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
     let mut state: [u8; 32] = [0x00; 32];
     let state_ptr = state.as_mut_ptr();
@@ -39,30 +39,26 @@ fn first_round() -> ([u8; 32], nrf54l15_app_pac::GlobalCracencoreS) {
         dmatag: 32,
     };
 
-    // let mut some_desc = SxDesc {
-    //     addr: input2.as_ptr() as *mut u8,
-    //     next: last_desc,
-    //     sz: 536870913,
-    //     dmatag: 35,
-    //     // sz: sz(input.len()),
-    //     // dmatag: dmatag_for(input.len()),
-    // };
-
-    // let mut data_desc = SxDesc {
-    //     addr: input.as_ptr() as *mut u8,
-    //     next: &mut some_desc,
-    //     sz: 63,
-    //     dmatag: 3,
-    //     // sz: sz(input.len()),
-    //     // dmatag: dmatag_for(input.len()),
-    // };
+    let mut some_desc = SxDesc {
+        addr: input2.as_ptr() as *mut u8,
+        next: last_desc,
+        sz: 536870975, // 63
+        dmatag: 35,
+    };
 
     let mut data_desc = SxDesc {
         addr: input.as_ptr() as *mut u8,
-        next: last_desc,
-        sz: sz(input.len()),
-        dmatag: dmatag_for(input.len()),
+        next: &mut some_desc,
+        sz: 1,
+        dmatag: 3,
     };
+
+    // let mut data_desc = SxDesc {
+    //     addr: input.as_ptr() as *mut u8,
+    //     next: last_desc,
+    //     sz: sz(input.len()),
+    //     dmatag: dmatag_for(input.len()),
+    // };
 
     let mut in_desc = SxDesc {
         addr: header.as_ptr() as *mut u8,
@@ -76,8 +72,6 @@ fn first_round() -> ([u8; 32], nrf54l15_app_pac::GlobalCracencoreS) {
         w.rng().set_bit();
         w.pkeikg().set_bit()
     });
-
-    unsafe { app_core::load_microcode() };
 
     dma.fetchaddrlsb()
         .write(|w| unsafe { w.bits((&mut in_desc) as *mut _ as u32) });
@@ -129,7 +123,8 @@ fn second_round(state: [u8; 32], cracencore_s: nrf54l15_app_pac::GlobalCracencor
     // SECOND ROUND
     let dma = cracencore_s.cryptmstrdma();
 
-    let input: &[u8; 64] = b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\0\0";
+    let input: &[u8; 64] = b"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\0\0";
+    // let input: &[u8; 64] = b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\0\0";
 
     let pad: [u8; 66] = [
         0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

@@ -12,12 +12,22 @@ fn main() -> ! {
     // let p = nrf54l15_app_pac::Peripherals::take().unwrap();
     let p = nrf54l15_app_pac::Peripherals::take().unwrap();
 
-    let mut state = app_core::HashState::<32, 128>::init(app_core::HashAlg::Sha2_256);
-    state.update(b"exam");
-    state.update(b"ple");
+    let mut state = app_core::HashState::init(app_core::HashAlg::Sha2_256);
+    info!("initial_state: {}", state);
+    // state.update(b"exam");
+    let fst_upd: [u8; 2] = [98; 2];
+    state.update(&fst_upd);
+    info!("state after fst update: {}", state);
+    let snd_upd: [u8; 130] = [98; 130];
+    state.update(&snd_upd);
+    info!("state after snd update: {}", state);
     let out = state.finalize(&p);
 
-    info!("out {:02x}", out.unwrap());
+    info!("out: {:02x}", out);
+
+    info!("DONE");
+
+    // info!("out {:02x}", out.unwrap());
 
     loop {
         cortex_m::asm::nop();

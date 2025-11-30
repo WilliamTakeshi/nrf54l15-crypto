@@ -3,7 +3,7 @@
 use defmt::info;
 // Supported hash algorithm bitmasks
 #[repr(u8)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, defmt::Format)]
 pub enum HashAlg {
     Sha1 = 0x02,
     Sha2_224 = 0x04,
@@ -781,81 +781,97 @@ fn cracen_hash<const N: usize>(
 )]
 const LAST_DESC_PTR: *mut SxDesc = 1 as *mut SxDesc;
 
-pub struct HashState<const N: usize, const M: usize> {
+#[derive(defmt::Format)]
+pub struct HashState {
     algorithm: HashAlg,
-    buf: [u8; M],
-    len: usize,
+    state: Option<[u8; 32]>,
+    block: [u8; 64],
+    digested: usize,
+    block_bytes_left: usize,
 }
 
-impl<const N: usize, const M: usize> HashState<N, M> {
+impl HashState {
     // GOAL
     // pub fn init(&mut self, algorithm: Self::Algorithm) -> Self::HashState;
     pub fn init(algorithm: HashAlg) -> Self {
         Self {
             algorithm,
-            buf: [0; M],
-            len: 0,
+            state: None,
+            block: [0; 64],
+            digested: 0,
+            block_bytes_left: 64,
         }
     }
 
     // GOAL
     // pub fn update(&mut self, instance: &mut Self::HashState, data: &[u8]);
     pub fn update(&mut self, data: &[u8]) -> () {
-        if self.len + data.len() > M {
-            panic!("input bigger than expected")
-        }
-        self.buf[self.len..self.len + data.len()].copy_from_slice(data);
-        self.len += data.len();
-        ()
-    }
+        let block_bytes_used = 64 - self.block_bytes_left;
 
-    // GOAL
-    // pub fn finalize(&mut self, instance: Self::HashState) -> Self::HashResult;
-    pub fn finalize(&mut self, p: &nrf54l15_app_pac::Peripherals) -> Result<[u8; N], ShaError> {
+        // Case 1: data fits entirely inside the current block
+        if data.len() <= self.block_bytes_left as usize {
+            self.block[block_bytes_used..block_bytes_used + data.len()].copy_from_slice(data);
+            self.block_bytes_left -= data.len();
+
+            return;
+        }
+
+        // Case 2: data does NOT fit
+        let p = unsafe { nrf54l15_app_pac::Peripherals::steal() };
+        let total = block_bytes_used + data.len();
+        let largest_block_end = total & !63; // round down to nearest multiple of 64
+        let take_from_data = largest_block_end.saturating_sub(block_bytes_used);
+
         let dma = p.global_cracencore_s.cryptmstrdma();
 
-        let mut out = [0u8; N];
-        let out_ptr = out.as_mut_ptr();
+        let mut new_state: [u8; 32] = [0x00; 32];
 
         // 4-byte algorithm header
-        let mut header = [self.algorithm as u8, 0x06, 0x00, 0x00];
+        let header: [u8; 4] = [0x08, 0x00, 0x00, 0x00];
 
-        // Output descriptor (sink)
+        #[allow(
+            clippy::manual_dangling_ptr,
+            reason = "nRF54L15 needs this pointer to be on address 1"
+        )]
+        let last_desc: *mut SxDesc = 1 as *mut SxDesc;
+
         let mut out_desc = SxDesc {
-            addr: out_ptr,
-            next: LAST_DESC_PTR,
-            sz: sz(N),
+            addr: new_state.as_mut_ptr(),
+            next: last_desc,
+            sz: sz(32),
             dmatag: 32,
         };
 
-        // Data descriptor (full message)
-        let mut data_desc = SxDesc {
-            addr: self.buf.as_ptr() as *mut u8,
-            next: LAST_DESC_PTR,
-            sz: sz(self.len),
-            dmatag: dmatag_for(self.len),
+        let mut some_desc = SxDesc {
+            addr: data.as_ptr() as *mut u8,
+            next: last_desc,
+            sz: 0x2000_0000 | take_from_data as u32, // 63
+            dmatag: 35,
         };
 
-        // Header descriptor (root)
-        let mut header_desc = SxDesc {
-            addr: header.as_mut_ptr(),
+        let mut data_desc = SxDesc {
+            addr: self.block.as_ptr() as *mut u8,
+            next: &mut some_desc,
+            sz: block_bytes_used as u32,
+            dmatag: 3,
+        };
+
+        let mut in_desc = SxDesc {
+            addr: header.as_ptr() as *mut u8,
             next: &mut data_desc,
             sz: sz(4),
             dmatag: 19,
         };
 
-        // Enable cryptomaster
         p.global_cracen_s.enable().write(|w| {
             w.cryptomaster().set_bit();
             w.rng().set_bit();
             w.pkeikg().set_bit()
         });
 
-        // Configure DMA source (header desc)
         dma.fetchaddrlsb()
-            .write(|w| unsafe { w.bits((&mut header_desc) as *mut _ as u32) });
+            .write(|w| unsafe { w.bits((&mut in_desc) as *mut _ as u32) });
 
-        // Configure DMA sink (out desc)
         dma.pushaddrlsb()
             .write(|w| unsafe { w.bits((&mut out_desc) as *mut _ as u32) });
 
@@ -872,10 +888,136 @@ impl<const N: usize, const M: usize> HashState<N, M> {
             w.startpush().set_bit()
         });
 
-        // Wait
         while dma.status().read().fetchbusy().bit_is_set() {}
         while dma.status().read().pushbusy().bit_is_set() {}
 
-        Ok(out)
+        info!("state: {:02x}", new_state);
+
+        self.state = Some(new_state);
+        self.digested += block_bytes_used + take_from_data;
+
+        // reset buffer
+        self.block = [0u8; 64];
+        self.block_bytes_left = 64;
+
+        // copy leftover bytes into empty buffer
+        let data_left = data.len() - take_from_data;
+        self.block[0..data_left].copy_from_slice(&data[take_from_data..]);
+        self.block_bytes_left -= data_left;
     }
+
+    // GOAL
+    // pub fn finalize(&mut self, instance: Self::HashState) -> Self::HashResult;
+    pub fn finalize(&mut self, p: &nrf54l15_app_pac::Peripherals) -> [u8; 32] {
+        let block_bytes_used = 64 - self.block_bytes_left;
+        let dma = p.global_cracencore_s.cryptmstrdma();
+
+        let mut pad: [u8; 128] = [0x00; 128];
+        let padding_size = sha256_padding(self.digested + block_bytes_used, &mut pad);
+        info!("pading {}: {:02x}", padding_size, pad);
+
+        let mut out: [u8; 32] = [0x00; 32];
+
+        // 4-byte algorithm header
+        let header: [u8; 4] = [0x08, 0x04, 0x00, 0x00];
+
+        #[allow(
+            clippy::manual_dangling_ptr,
+            reason = "nRF54L15 needs this pointer to be on address 1"
+        )]
+        let last_desc: *mut SxDesc = 1 as *mut SxDesc;
+
+        let mut out_desc = SxDesc {
+            addr: out.as_mut_ptr(),
+            next: last_desc,
+            sz: sz(32),
+            dmatag: 32,
+        };
+
+        let mut some_desc = SxDesc {
+            addr: pad.as_ptr() as *mut u8, //pad
+            next: last_desc,
+            sz: 0x2000_0000 | padding_size as u32, // pad
+            dmatag: 35,
+        };
+
+        let mut data_desc = SxDesc {
+            addr: self.block.as_ptr() as *mut u8,
+            next: &mut some_desc,
+            sz: block_bytes_used as u32,
+            dmatag: 3,
+        };
+        info!("block: {:02x}", self.block);
+
+        // TODO WHEN STATE IS EMPTY
+        let mut state_desc = SxDesc {
+            addr: self.state.unwrap().as_ptr() as *mut u8,
+            next: &mut data_desc,
+            sz: sz(32),
+            dmatag: 99,
+        };
+        info!("self.state.unwrap(): {:02x}", self.state.unwrap());
+
+        let mut in_desc = SxDesc {
+            addr: header.as_ptr() as *mut u8,
+            next: &mut state_desc,
+            sz: sz(4),
+            dmatag: 19,
+        };
+
+        dma.fetchaddrlsb()
+            .write(|w| unsafe { w.bits((&mut in_desc) as *mut _ as u32) });
+
+        dma.pushaddrlsb()
+            .write(|w| unsafe { w.bits((&mut out_desc) as *mut _ as u32) });
+
+        dma.config().write(|w| {
+            w.fetchctrlindirect().set_bit();
+            w.pushctrlindirect().set_bit();
+            w.fetchstop().clear_bit();
+            w.pushstop().clear_bit();
+            w.softrst().clear_bit()
+        });
+
+        dma.start().write(|w| {
+            w.startfetch().set_bit();
+            w.startpush().set_bit()
+        });
+
+        while dma.status().read().fetchbusy().bit_is_set() {}
+        while dma.status().read().pushbusy().bit_is_set() {}
+
+        info!("out: {:02x}", out);
+        out
+    }
+}
+
+pub fn sha256_padding(msg_len: usize, out: &mut [u8; 128]) -> usize {
+    out[0] = 0x80;
+
+    // compute zero padding length
+    let mod_len = (msg_len + 1) % 64;
+
+    let zero_pad_len = if mod_len <= 56 {
+        // fits in one block
+        56 - mod_len
+    } else {
+        // needs two blocks
+        64 + 56 - mod_len
+    };
+
+    for i in 1..=zero_pad_len {
+        out[i] = 0;
+    }
+
+    // append 64-bit length (big endian)
+    let bit_len = (msg_len as u64) * 8;
+    let be = bit_len.to_be_bytes();
+
+    let length_pos = 1 + zero_pad_len;
+    for i in 0..8 {
+        out[length_pos + i] = be[i];
+    }
+
+    1 + zero_pad_len + 8
 }
