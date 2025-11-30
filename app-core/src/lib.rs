@@ -914,12 +914,8 @@ impl HashState {
 
         let mut pad: [u8; 128] = [0x00; 128];
         let padding_size = sha256_padding(self.digested + block_bytes_used, &mut pad);
-        info!("pading {}: {:02x}", padding_size, pad);
 
         let mut out: [u8; 32] = [0x00; 32];
-
-        // 4-byte algorithm header
-        let header: [u8; 4] = [0x08, 0x04, 0x00, 0x00];
 
         #[allow(
             clippy::manual_dangling_ptr,
@@ -934,40 +930,86 @@ impl HashState {
             dmatag: 32,
         };
 
+        let header: [u8; 4] = match self.state {
+            Some(_) => [0x08, 0x04, 0x00, 0x00],
+            None => [0x08, 0x06, 0x00, 0x00],
+        };
+
         let mut some_desc = SxDesc {
-            addr: pad.as_ptr() as *mut u8, //pad
-            next: last_desc,
-            sz: 0x2000_0000 | padding_size as u32, // pad
-            dmatag: 35,
+            addr: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+            sz: 0,
+            dmatag: 0,
         };
 
         let mut data_desc = SxDesc {
-            addr: self.block.as_ptr() as *mut u8,
-            next: &mut some_desc,
-            sz: block_bytes_used as u32,
-            dmatag: 3,
+            addr: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+            sz: 0,
+            dmatag: 0,
         };
-        info!("block: {:02x}", self.block);
 
-        // TODO WHEN STATE IS EMPTY
         let mut state_desc = SxDesc {
-            addr: self.state.unwrap().as_ptr() as *mut u8,
-            next: &mut data_desc,
-            sz: sz(32),
-            dmatag: 99,
+            addr: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+            sz: 0,
+            dmatag: 0,
         };
-        info!("self.state.unwrap(): {:02x}", self.state.unwrap());
 
         let mut in_desc = SxDesc {
-            addr: header.as_ptr() as *mut u8,
-            next: &mut state_desc,
-            sz: sz(4),
-            dmatag: 19,
+            addr: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+            sz: 0,
+            dmatag: 0,
         };
 
+        match self.state {
+            None => {
+                data_desc.addr = self.block.as_ptr() as *mut u8;
+                data_desc.next = last_desc;
+                data_desc.sz = sz(2);
+                data_desc.dmatag = dmatag_for(2);
+
+                in_desc.addr = header.as_ptr() as *mut u8;
+                in_desc.next = &mut data_desc;
+                in_desc.sz = sz(4);
+                in_desc.dmatag = 19;
+            }
+            Some(state) => {
+                some_desc.addr = pad.as_ptr() as *mut u8;
+                some_desc.next = last_desc;
+                some_desc.sz = 0x2000_0000 | padding_size as u32;
+                some_desc.dmatag = 35;
+
+                data_desc.addr = self.block.as_ptr() as *mut u8;
+                data_desc.next = &mut some_desc;
+                data_desc.sz = block_bytes_used as u32;
+                data_desc.dmatag = 3;
+
+                state_desc.addr = state.as_ptr() as *mut u8;
+                state_desc.next = &mut data_desc;
+                state_desc.sz = sz(32);
+                state_desc.dmatag = 99;
+
+                in_desc.addr = header.as_ptr() as *mut u8;
+                in_desc.next = &mut state_desc;
+                in_desc.sz = sz(4);
+                in_desc.dmatag = 19;
+            }
+        }
+
+        // Enable cryptomaster
+        p.global_cracen_s.enable().write(|w| {
+            w.cryptomaster().set_bit();
+            w.rng().set_bit();
+            w.pkeikg().set_bit()
+        });
+
+        // Configure DMA source
         dma.fetchaddrlsb()
             .write(|w| unsafe { w.bits((&mut in_desc) as *mut _ as u32) });
 
+        // Configure DMA sink
         dma.pushaddrlsb()
             .write(|w| unsafe { w.bits((&mut out_desc) as *mut _ as u32) });
 
@@ -979,11 +1021,13 @@ impl HashState {
             w.softrst().clear_bit()
         });
 
+        // Start DMA
         dma.start().write(|w| {
             w.startfetch().set_bit();
             w.startpush().set_bit()
         });
 
+        // Wait
         while dma.status().read().fetchbusy().bit_is_set() {}
         while dma.status().read().pushbusy().bit_is_set() {}
 

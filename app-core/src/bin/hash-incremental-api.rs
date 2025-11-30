@@ -11,15 +11,15 @@ fn main() -> ! {
     info!("Starting nRF54L15 CryptoMaster SHA example...");
     // let p = nrf54l15_app_pac::Peripherals::take().unwrap();
     let p = nrf54l15_app_pac::Peripherals::take().unwrap();
+    let fst_upd: [u8; 2] = [98; 2];
+    let snd_upd: [u8; 130] = [98; 130];
 
     let mut state = app_core::HashState::init(app_core::HashAlg::Sha2_256);
     info!("initial_state: {}", state);
     // state.update(b"exam");
-    let fst_upd: [u8; 2] = [98; 2];
     state.update(&fst_upd);
     info!("state after fst update: {}", state);
-    let snd_upd: [u8; 130] = [98; 130];
-    state.update(&snd_upd);
+    // state.update(&snd_upd);
     info!("state after snd update: {}", state);
     let out = state.finalize(&p);
 
