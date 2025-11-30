@@ -1,9 +1,10 @@
 #![no_std]
 
+use defmt::info;
 // Supported hash algorithm bitmasks
 #[repr(u8)]
-#[derive(Copy, Clone, Debug)]
-enum HashAlg {
+#[derive(Copy, Clone, Debug, defmt::Format)]
+pub enum HashAlg {
     Sha1 = 0x02,
     Sha2_224 = 0x04,
     Sha2_256 = 0x08,
@@ -68,100 +69,104 @@ pub fn cracen_sha512(
     cracen_hash(p, input, out, HashAlg::Sha2_512)
 }
 
-fn cracen_hash<const N: usize>(
-    p: &nrf54l15_app_pac::Peripherals,
-    input: &[u8],
-    out: &mut [u8; N],
-    alg: HashAlg,
-) -> Result<(), ShaError> {
-    if N != hash_out_len(alg) {
-        return Err(ShaError::InvalidInput);
-    }
-    if input.is_empty() {
-        return Err(ShaError::InvalidInput);
-    }
+// fn cracen_hash<const N: usize>(
+//     p: &nrf54l15_app_pac::Peripherals,
+//     input: &[u8],
+//     out: &mut [u8; N],
+//     alg: HashAlg,
+// ) -> Result<(), ShaError> {
+//     if N != hash_out_len(alg) {
+//         return Err(ShaError::InvalidInput);
+//     }
+//     if input.is_empty() {
+//         return Err(ShaError::InvalidInput);
+//     }
 
-    let dma = p.global_cracencore_s.cryptmstrdma();
+//     let dma = p.global_cracencore_s.cryptmstrdma();
 
-    let out_ptr = out.as_mut_ptr();
+//     let out_ptr = out.as_mut_ptr();
 
-    // 4-byte algorithm header
-    let mut header = [alg as u8, 0x06, 0x00, 0x00];
+//     // 4-byte algorithm header
+//     let mut header = [alg as u8, 0x06, 0x00, 0x00];
 
-    // Last descriptor (address = 1)
-    #[allow(
-        clippy::manual_dangling_ptr,
-        reason = "nRF54L15 needs this pointer to be on address 1"
-    )]
-    let last_desc: *mut SxDesc = 1 as *mut SxDesc;
+//     // Last descriptor (address = 1)
+//     #[allow(
+//         clippy::manual_dangling_ptr,
+//         reason = "nRF54L15 needs this pointer to be on address 1"
+//     )]
+//     let last_desc: *mut SxDesc = 1 as *mut SxDesc;
 
-    // Output descriptor
-    let mut out_desc = SxDesc {
-        addr: out_ptr,
-        next: last_desc,
-        sz: sz(N),
-        dmatag: 32,
-    };
+//     // Output descriptor
+//     let mut out_desc = SxDesc {
+//         addr: out_ptr,
+//         next: last_desc,
+//         sz: sz(N),
+//         dmatag: 32,
+//     };
 
-    // Middle descriptor (input)
-    let mut mid_desc = SxDesc {
-        addr: input.as_ptr() as *mut u8,
-        next: last_desc,
-        sz: sz(input.len()),
-        dmatag: dmatag_for(input.len()),
-    };
+//     // Middle descriptor (input)
+//     let mut mid_desc = SxDesc {
+//         addr: input.as_ptr() as *mut u8,
+//         next: last_desc,
+//         sz: sz(input.len()),
+//         dmatag: dmatag_for(input.len()),
+//     };
 
-    // Outer descriptor (input)
-    let mut in_desc = SxDesc {
-        addr: header.as_mut_ptr(),
-        next: &mut mid_desc,
-        sz: sz(4),
-        dmatag: 19,
-    };
+//     // Outer descriptor (input)
+//     let mut in_desc = SxDesc {
+//         addr: header.as_mut_ptr(),
+//         next: &mut mid_desc,
+//         sz: sz(4),
+//         dmatag: 19,
+//     };
 
-    // Enable cryptomaster
-    p.global_cracen_s.enable().write(|w| {
-        w.cryptomaster().set_bit();
-        w.rng().set_bit();
-        w.pkeikg().set_bit()
-    });
+//     // Enable cryptomaster
+//     p.global_cracen_s.enable().write(|w| {
+//         w.cryptomaster().set_bit();
+//         w.rng().set_bit();
+//         w.pkeikg().set_bit()
+//     });
 
-    // Configure DMA source
-    dma.fetchaddrlsb()
-        .write(|w| unsafe { w.bits((&mut in_desc) as *mut _ as u32) });
+//     // Configure DMA source
+//     dma.fetchaddrlsb()
+//         .write(|w| unsafe { w.bits((&mut in_desc) as *mut _ as u32) });
 
-    // Configure DMA sink
-    dma.pushaddrlsb()
-        .write(|w| unsafe { w.bits((&mut out_desc) as *mut _ as u32) });
+//     // Configure DMA sink
+//     dma.pushaddrlsb()
+//         .write(|w| unsafe { w.bits((&mut out_desc) as *mut _ as u32) });
 
-    dma.config().write(|w| {
-        w.fetchctrlindirect().set_bit();
-        w.pushctrlindirect().set_bit();
-        w.fetchstop().clear_bit();
-        w.pushstop().clear_bit();
-        w.softrst().clear_bit()
-    });
+//     dma.config().write(|w| {
+//         w.fetchctrlindirect().set_bit();
+//         w.pushctrlindirect().set_bit();
+//         w.fetchstop().clear_bit();
+//         w.pushstop().clear_bit();
+//         w.softrst().clear_bit()
+//     });
 
-    // Start DMA
-    dma.start().write(|w| {
-        w.startfetch().set_bit();
-        w.startpush().set_bit()
-    });
+//     // Start DMA
+//     dma.start().write(|w| {
+//         w.startfetch().set_bit();
+//         w.startpush().set_bit()
+//     });
 
-    // Wait
-    while dma.status().read().fetchbusy().bit_is_set() {}
-    while dma.status().read().pushbusy().bit_is_set() {}
+//     // Wait
+//     while dma.status().read().fetchbusy().bit_is_set() {}
+//     while dma.status().read().pushbusy().bit_is_set() {}
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 // TODO: Remove magic numbers
-fn dmatag_for(input: usize) -> u32 {
+pub fn dmatag_for(input: usize) -> u32 {
     const TAG_BASE: u32 = 0x23;
     const TAG_0: u32 = 0x000;
     const TAG_1: u32 = 0x300;
     const TAG_2: u32 = 0x200;
     const TAG_3: u32 = 0x100;
+
+    if input == 0 {
+        return TAG_BASE | 0x400;
+    }
 
     match input % 4 {
         0 => TAG_BASE | TAG_0, // -> 0x023 = 35
@@ -172,13 +177,14 @@ fn dmatag_for(input: usize) -> u32 {
     }
 }
 
-fn sz(n: usize) -> u32 {
+pub fn sz(n: usize) -> u32 {
     const DMA_REALIGN: usize = 0x2000_0000;
-    let group_end = ((n - 1) / 4 + 1) * 4;
+    let group_end = (n.saturating_sub(1) / 4 + 1) * 4;
     (group_end | DMA_REALIGN) as u32
 }
 
-#[repr(C)]
+// #[repr(C)]
+#[repr(C, align(32))]
 #[derive(Debug, Clone, Copy, defmt::Format)]
 pub struct SxDesc {
     pub addr: *mut u8,
@@ -669,3 +675,365 @@ const MICROCODE: [u32; 1223] = [
     0x21261D00, 0x496B1013, 0x52BC2211, 0xD3E72126, 0x1A00E3EA, 0x8E0F6800, 0xA22C6C00, 0x5987100F,
     0x59871002, 0x2CA0A2A0, 0x59891015, 0xA2801A00, 0xA2902C80, 0x1A002C90, 0x5FD61EFA,
 ];
+
+fn cracen_hash<const N: usize>(
+    p: &nrf54l15_app_pac::Peripherals,
+    input: &[u8],
+    out: &mut [u8; N],
+    alg: HashAlg,
+) -> Result<(), ShaError> {
+    if N != hash_out_len(alg) {
+        return Err(ShaError::InvalidInput);
+    }
+
+    let dma = p.global_cracencore_s.cryptmstrdma();
+
+    let out_ptr = out.as_mut_ptr();
+
+    // 4-byte algorithm header
+    let mut header = [alg as u8, 0x06, 0x00, 0x00];
+
+    // Output descriptor
+    let mut out_desc = SxDesc {
+        addr: out_ptr,
+        next: LAST_DESC_PTR,
+        sz: sz(N),
+        dmatag: 32,
+    };
+
+    // Middle descriptor (input)
+    let mut mid_desc = SxDesc {
+        addr: input.as_ptr() as *mut u8,
+        next: LAST_DESC_PTR,
+        sz: sz(input.len()),
+        dmatag: dmatag_for(input.len()),
+    };
+
+    // Outer descriptor (input)
+    let mut in_desc = SxDesc {
+        addr: header.as_mut_ptr(),
+        next: &mut mid_desc,
+        sz: sz(4),
+        dmatag: 19,
+    };
+
+    info!("in_desc at {:02x}: {}", &in_desc as *const SxDesc, in_desc);
+    info!(
+        "mid_desc at {:02x}: {}",
+        &mid_desc as *const SxDesc, mid_desc
+    );
+    info!(
+        "out_desc at {:02x}: {}",
+        &out_desc as *const SxDesc, out_desc
+    );
+
+    // Enable cryptomaster
+    p.global_cracen_s.enable().write(|w| {
+        w.cryptomaster().set_bit();
+        w.rng().set_bit();
+        w.pkeikg().set_bit()
+    });
+
+    // Configure DMA source
+    dma.fetchaddrlsb()
+        .write(|w| unsafe { w.bits((&mut in_desc) as *mut _ as u32) });
+
+    // Configure DMA sink
+    dma.pushaddrlsb()
+        .write(|w| unsafe { w.bits((&mut out_desc) as *mut _ as u32) });
+
+    dma.config().write(|w| {
+        w.fetchctrlindirect().set_bit();
+        w.pushctrlindirect().set_bit();
+        w.fetchstop().clear_bit();
+        w.pushstop().clear_bit();
+        w.softrst().clear_bit()
+    });
+
+    // Start DMA
+    dma.start().write(|w| {
+        w.startfetch().set_bit();
+        w.startpush().set_bit()
+    });
+
+    // Wait
+    while dma.status().read().fetchbusy().bit_is_set() {}
+    while dma.status().read().pushbusy().bit_is_set() {}
+
+    Ok(())
+}
+
+#[allow(
+    clippy::manual_dangling_ptr,
+    reason = "nRF54L15 uses 1 as last-descriptor sentinel"
+)]
+const LAST_DESC_PTR: *mut SxDesc = 1 as *mut SxDesc;
+
+#[derive(defmt::Format)]
+pub struct HashState {
+    algorithm: HashAlg,
+    state: Option<[u8; 32]>,
+    block: [u8; 64],
+    digested: usize,
+    block_bytes_left: usize,
+}
+
+impl HashState {
+    // GOAL
+    // pub fn init(&mut self, algorithm: Self::Algorithm) -> Self::HashState;
+    pub fn init(algorithm: HashAlg) -> Self {
+        Self {
+            algorithm,
+            state: None,
+            block: [0; 64],
+            digested: 0,
+            block_bytes_left: 64,
+        }
+    }
+
+    pub fn update(&mut self, data: &[u8]) -> () {
+        let block_bytes_used = 64 - self.block_bytes_left;
+
+        // Case 1: data fits entirely inside the current block
+        if data.len() <= self.block_bytes_left as usize {
+            self.block[block_bytes_used..block_bytes_used + data.len()].copy_from_slice(data);
+            self.block_bytes_left -= data.len();
+
+            return;
+        }
+
+        // Case 2: data does NOT fit
+        let p = unsafe { nrf54l15_app_pac::Peripherals::steal() };
+        let total = block_bytes_used + data.len();
+        let largest_block_end = total & !63; // round down to nearest multiple of 64
+        let take_from_data = largest_block_end.saturating_sub(block_bytes_used);
+
+        let dma = p.global_cracencore_s.cryptmstrdma();
+
+        let mut new_state: [u8; 32] = [0x00; 32];
+
+        // 4-byte algorithm header
+        let header: [u8; 4] = [0x08, 0x00, 0x00, 0x00];
+
+        let mut out_desc = SxDesc {
+            addr: new_state.as_mut_ptr(),
+            next: LAST_DESC_PTR,
+            sz: sz(32),
+            dmatag: 32,
+        };
+
+        let mut some_desc = SxDesc {
+            addr: data.as_ptr() as *mut u8,
+            next: LAST_DESC_PTR,
+            sz: 0x2000_0000 | take_from_data as u32, // 63
+            dmatag: 35,
+        };
+
+        let mut data_desc = SxDesc {
+            addr: self.block.as_ptr() as *mut u8,
+            next: &mut some_desc,
+            sz: block_bytes_used as u32,
+            dmatag: 3,
+        };
+
+        let mut in_desc = SxDesc {
+            addr: header.as_ptr() as *mut u8,
+            next: &mut data_desc,
+            sz: sz(4),
+            dmatag: 19,
+        };
+
+        p.global_cracen_s.enable().write(|w| {
+            w.cryptomaster().set_bit();
+            w.rng().set_bit();
+            w.pkeikg().set_bit()
+        });
+
+        dma.fetchaddrlsb()
+            .write(|w| unsafe { w.bits((&mut in_desc) as *mut _ as u32) });
+
+        dma.pushaddrlsb()
+            .write(|w| unsafe { w.bits((&mut out_desc) as *mut _ as u32) });
+
+        dma.config().write(|w| {
+            w.fetchctrlindirect().set_bit();
+            w.pushctrlindirect().set_bit();
+            w.fetchstop().clear_bit();
+            w.pushstop().clear_bit();
+            w.softrst().clear_bit()
+        });
+
+        dma.start().write(|w| {
+            w.startfetch().set_bit();
+            w.startpush().set_bit()
+        });
+
+        while dma.status().read().fetchbusy().bit_is_set() {}
+        while dma.status().read().pushbusy().bit_is_set() {}
+
+        info!("state: {:02x}", new_state);
+
+        self.state = Some(new_state);
+        self.digested += block_bytes_used + take_from_data;
+
+        // reset buffer
+        self.block = [0u8; 64];
+        self.block_bytes_left = 64;
+
+        // copy leftover bytes into empty buffer
+        let data_left = data.len() - take_from_data;
+        self.block[0..data_left].copy_from_slice(&data[take_from_data..]);
+        self.block_bytes_left -= data_left;
+    }
+
+    pub fn finalize(&mut self, p: &nrf54l15_app_pac::Peripherals) -> [u8; 32] {
+        let block_bytes_used = 64 - self.block_bytes_left;
+        let dma = p.global_cracencore_s.cryptmstrdma();
+
+        let mut pad: [u8; 128] = [0x00; 128];
+        let padding_size = sha256_padding(self.digested + block_bytes_used, &mut pad);
+
+        let mut out: [u8; 32] = [0x00; 32];
+
+        let mut out_desc = SxDesc {
+            addr: out.as_mut_ptr(),
+            next: LAST_DESC_PTR,
+            sz: sz(32),
+            dmatag: 32,
+        };
+
+        let header: [u8; 4] = match self.state {
+            Some(_) => [0x08, 0x04, 0x00, 0x00],
+            None => [0x08, 0x06, 0x00, 0x00],
+        };
+
+        let mut some_desc = SxDesc {
+            addr: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+            sz: 0,
+            dmatag: 0,
+        };
+
+        let mut data_desc = SxDesc {
+            addr: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+            sz: 0,
+            dmatag: 0,
+        };
+
+        let mut state_desc = SxDesc {
+            addr: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+            sz: 0,
+            dmatag: 0,
+        };
+
+        let mut in_desc = SxDesc {
+            addr: core::ptr::null_mut(),
+            next: core::ptr::null_mut(),
+            sz: 0,
+            dmatag: 0,
+        };
+
+        match self.state {
+            None => {
+                data_desc.addr = self.block.as_ptr() as *mut u8;
+                data_desc.next = LAST_DESC_PTR;
+                data_desc.sz = sz(2);
+                data_desc.dmatag = dmatag_for(2);
+
+                in_desc.addr = header.as_ptr() as *mut u8;
+                in_desc.next = &mut data_desc;
+                in_desc.sz = sz(4);
+                in_desc.dmatag = 19;
+            }
+            Some(state) => {
+                some_desc.addr = pad.as_ptr() as *mut u8;
+                some_desc.next = LAST_DESC_PTR;
+                some_desc.sz = 0x2000_0000 | padding_size as u32;
+                some_desc.dmatag = 35;
+
+                data_desc.addr = self.block.as_ptr() as *mut u8;
+                data_desc.next = &mut some_desc;
+                data_desc.sz = block_bytes_used as u32;
+                data_desc.dmatag = 3;
+
+                state_desc.addr = state.as_ptr() as *mut u8;
+                state_desc.next = &mut data_desc;
+                state_desc.sz = sz(32);
+                state_desc.dmatag = 99;
+
+                in_desc.addr = header.as_ptr() as *mut u8;
+                in_desc.next = &mut state_desc;
+                in_desc.sz = sz(4);
+                in_desc.dmatag = 19;
+            }
+        }
+
+        // Enable cryptomaster
+        p.global_cracen_s.enable().write(|w| {
+            w.cryptomaster().set_bit();
+            w.rng().set_bit();
+            w.pkeikg().set_bit()
+        });
+
+        // Configure DMA source
+        dma.fetchaddrlsb()
+            .write(|w| unsafe { w.bits((&mut in_desc) as *mut _ as u32) });
+
+        // Configure DMA sink
+        dma.pushaddrlsb()
+            .write(|w| unsafe { w.bits((&mut out_desc) as *mut _ as u32) });
+
+        dma.config().write(|w| {
+            w.fetchctrlindirect().set_bit();
+            w.pushctrlindirect().set_bit();
+            w.fetchstop().clear_bit();
+            w.pushstop().clear_bit();
+            w.softrst().clear_bit()
+        });
+
+        // Start DMA
+        dma.start().write(|w| {
+            w.startfetch().set_bit();
+            w.startpush().set_bit()
+        });
+
+        // Wait
+        while dma.status().read().fetchbusy().bit_is_set() {}
+        while dma.status().read().pushbusy().bit_is_set() {}
+
+        info!("out: {:02x}", out);
+        out
+    }
+}
+
+pub fn sha256_padding(msg_len: usize, out: &mut [u8; 128]) -> usize {
+    out[0] = 0x80;
+
+    // compute zero padding length
+    let mod_len = (msg_len + 1) % 64;
+
+    let zero_pad_len = if mod_len <= 56 {
+        // fits in one block
+        56 - mod_len
+    } else {
+        // needs two blocks
+        64 + 56 - mod_len
+    };
+
+    for i in 1..=zero_pad_len {
+        out[i] = 0;
+    }
+
+    // append 64-bit length (big endian)
+    let bit_len = (msg_len as u64) * 8;
+    let be = bit_len.to_be_bytes();
+
+    let length_pos = 1 + zero_pad_len;
+    for i in 0..8 {
+        out[length_pos + i] = be[i];
+    }
+
+    1 + zero_pad_len + 8
+}

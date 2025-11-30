@@ -11,7 +11,7 @@ fn main() -> ! {
     info!("Starting nRF54L15 CryptoMaster SHA example...");
     let p = nrf54l15_app_pac::Peripherals::take().unwrap();
 
-    let input = b"example";
+    let input = b"";
     info!("input: {:02x}", input);
 
     let mut out_sha1 = [0u8; 20];
