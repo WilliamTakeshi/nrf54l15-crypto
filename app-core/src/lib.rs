@@ -685,11 +685,6 @@ fn cracen_hash<const N: usize>(
     if N != hash_out_len(alg) {
         return Err(ShaError::InvalidInput);
     }
-    // if input.is_empty() {
-    //     return Err(ShaError::InvalidInput);
-    // }
-
-    info!("AAA");
 
     let dma = p.global_cracencore_s.cryptmstrdma();
 
@@ -698,17 +693,10 @@ fn cracen_hash<const N: usize>(
     // 4-byte algorithm header
     let mut header = [alg as u8, 0x06, 0x00, 0x00];
 
-    // Last descriptor (address = 1)
-    #[allow(
-        clippy::manual_dangling_ptr,
-        reason = "nRF54L15 needs this pointer to be on address 1"
-    )]
-    let last_desc: *mut SxDesc = 1 as *mut SxDesc;
-
     // Output descriptor
     let mut out_desc = SxDesc {
         addr: out_ptr,
-        next: last_desc,
+        next: LAST_DESC_PTR,
         sz: sz(N),
         dmatag: 32,
     };
@@ -716,7 +704,7 @@ fn cracen_hash<const N: usize>(
     // Middle descriptor (input)
     let mut mid_desc = SxDesc {
         addr: input.as_ptr() as *mut u8,
-        next: last_desc,
+        next: LAST_DESC_PTR,
         sz: sz(input.len()),
         dmatag: dmatag_for(input.len()),
     };
@@ -803,8 +791,6 @@ impl HashState {
         }
     }
 
-    // GOAL
-    // pub fn update(&mut self, instance: &mut Self::HashState, data: &[u8]);
     pub fn update(&mut self, data: &[u8]) -> () {
         let block_bytes_used = 64 - self.block_bytes_left;
 
@@ -829,22 +815,16 @@ impl HashState {
         // 4-byte algorithm header
         let header: [u8; 4] = [0x08, 0x00, 0x00, 0x00];
 
-        #[allow(
-            clippy::manual_dangling_ptr,
-            reason = "nRF54L15 needs this pointer to be on address 1"
-        )]
-        let last_desc: *mut SxDesc = 1 as *mut SxDesc;
-
         let mut out_desc = SxDesc {
             addr: new_state.as_mut_ptr(),
-            next: last_desc,
+            next: LAST_DESC_PTR,
             sz: sz(32),
             dmatag: 32,
         };
 
         let mut some_desc = SxDesc {
             addr: data.as_ptr() as *mut u8,
-            next: last_desc,
+            next: LAST_DESC_PTR,
             sz: 0x2000_0000 | take_from_data as u32, // 63
             dmatag: 35,
         };
@@ -906,8 +886,6 @@ impl HashState {
         self.block_bytes_left -= data_left;
     }
 
-    // GOAL
-    // pub fn finalize(&mut self, instance: Self::HashState) -> Self::HashResult;
     pub fn finalize(&mut self, p: &nrf54l15_app_pac::Peripherals) -> [u8; 32] {
         let block_bytes_used = 64 - self.block_bytes_left;
         let dma = p.global_cracencore_s.cryptmstrdma();
@@ -917,15 +895,9 @@ impl HashState {
 
         let mut out: [u8; 32] = [0x00; 32];
 
-        #[allow(
-            clippy::manual_dangling_ptr,
-            reason = "nRF54L15 needs this pointer to be on address 1"
-        )]
-        let last_desc: *mut SxDesc = 1 as *mut SxDesc;
-
         let mut out_desc = SxDesc {
             addr: out.as_mut_ptr(),
-            next: last_desc,
+            next: LAST_DESC_PTR,
             sz: sz(32),
             dmatag: 32,
         };
@@ -966,7 +938,7 @@ impl HashState {
         match self.state {
             None => {
                 data_desc.addr = self.block.as_ptr() as *mut u8;
-                data_desc.next = last_desc;
+                data_desc.next = LAST_DESC_PTR;
                 data_desc.sz = sz(2);
                 data_desc.dmatag = dmatag_for(2);
 
@@ -977,7 +949,7 @@ impl HashState {
             }
             Some(state) => {
                 some_desc.addr = pad.as_ptr() as *mut u8;
-                some_desc.next = last_desc;
+                some_desc.next = LAST_DESC_PTR;
                 some_desc.sz = 0x2000_0000 | padding_size as u32;
                 some_desc.dmatag = 35;
 

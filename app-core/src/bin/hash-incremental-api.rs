@@ -16,11 +16,20 @@ fn main() -> ! {
 
     let mut state = app_core::HashState::init(app_core::HashAlg::Sha2_256);
     info!("initial_state: {}", state);
-    // state.update(b"exam");
     state.update(&fst_upd);
-    info!("state after fst update: {}", state);
+    // info!("state after fst update: {}", state);
     // state.update(&snd_upd);
-    info!("state after snd update: {}", state);
+    // info!("state after snd update: {}", state);
+    let out = state.finalize(&p);
+
+    info!("out: {:02x}", out);
+
+    let mut state = app_core::HashState::init(app_core::HashAlg::Sha2_256);
+    info!("initial_state: {}", state);
+    state.update(&fst_upd);
+    // info!("state after fst update: {}", state);
+    state.update(&snd_upd);
+    // info!("state after snd update: {}", state);
     let out = state.finalize(&p);
 
     info!("out: {:02x}", out);
